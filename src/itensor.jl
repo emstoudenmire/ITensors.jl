@@ -8,7 +8,7 @@ struct ITensor
 end
 
 function ITensor(::Type{T},inds::IndexSet) where {T<:Number}
-  return ITensor(inds,Dense{T}(dim(inds)))
+    return ITensor(inds,Dense{T, Vector{T}}(dim(inds)))
 end
 ITensor(::Type{T},inds::Index...) where {T<:Number} = ITensor(T,IndexSet(inds...))
 
@@ -16,13 +16,13 @@ ITensor(is::IndexSet) = ITensor(Float64,is...)
 ITensor(inds::Index...) = ITensor(IndexSet(inds...))
 
 function ITensor(x::S,inds::IndexSet) where {S<:Number}
-  return ITensor(inds,Dense{S}(x,dim(inds)))
+    return ITensor(inds,Dense{S, Vector{S}}(x,dim(inds)))
 end
 ITensor(x::S,inds::Index...) where {S<:Number} = ITensor(x,IndexSet(inds...))
 
 #TODO: check that the size of the Array matches the Index dimensions
 function ITensor(A::Array{S},inds::IndexSet) where {S<:Number}
-  return ITensor(inds,Dense{S}(A))
+    return ITensor(inds,Dense{S, Vector{S}}(A))
 end
 ITensor(A::Array{S},inds::Index...) where {S<:Number} = ITensor(A,IndexSet(inds...))
 

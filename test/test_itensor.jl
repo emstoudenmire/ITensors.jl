@@ -81,7 +81,7 @@ digits(::Type{T},i,j,k) where {T} = T(i*10^2+j*10+k)
         ii = Index(4)
         jj = Index(4)
         S = Diagonal(s)
-        T = ITensor(IndexSet(ii,jj),Dense{Float64}(vec(U*S*V')))
+        T = ITensor(IndexSet(ii,jj),Dense{Float64, Vector{Float64}}(vec(U*S*V')))
         (U,S,V) = svd(T,ii;maxm=2)
         @test norm(U*S*V-T)≈sqrt(s[3]^2+s[4]^2)
     end 

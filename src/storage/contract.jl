@@ -554,7 +554,7 @@ function contract(Cinds::IndexSet,
   Cdims = dims(Cinds)
 
   # Create storage for output tensor
-  Cstore = Dense{promote_type(SA,SB)}(prod(Cdims))
+  Cstore = Dense{promote_type(SA,SB), Vector{promote_type(SA,SB)}}(prod(Cdims))
 
   Adata = reshape(data(Astore),Adims)
   Bdata = reshape(data(Bstore),Bdims)

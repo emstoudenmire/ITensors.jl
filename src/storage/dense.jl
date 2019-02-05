@@ -1,11 +1,11 @@
 using CuArrays.CUSOLVER
 
-struct Dense{T} <: TensorStorage
-  data::Vector{T}
-  Dense{T}(data::Vector{T}) where {T} = new{T}(data)
-  Dense{T}(size::Integer) where {T} = new{T}(zeros(size))
-  Dense{T}(x::Number,size::Integer) where {T} = new{T}(fill(x,size))
-  Dense{T}() where {T} = new{T}(Vector{T}())
+struct Dense{T,S<:AbstractArray{<:T}} <: TensorStorage
+  data::S
+  Dense{T, S}(data::S) where {T<:Number, S<:AbstractArray{<:T}} = new{T, S}(data)
+  Dense{T, S}(size::Integer) where {T<:Number, S<:AbstractArray{<:T}} = new{T, S}(zeros(T, size))
+  Dense{T, S}(x::T, size::Integer) where {T<:Number, S<:AbstractArray{<:T}} = new{T, S}(fill(x, size))
+  Dense{T, S}() where {T<:Number, S<:AbstractArray{<:T}} = new{T, S}(S{T}())
 end
 
 data(D::Dense) = D.data
@@ -17,7 +17,7 @@ getindex(D::Dense,i::Int) = data(D)[i]
 *(D::T,x::Number) where {T<:Dense} = T(x*data(D))
 *(x::Number,D::Dense) = D*x
 
-copy(D::Dense{T}) where {T} = Dense{T}(copy(data(D)))
+copy(D::Dense{T, Vector{T}}) where {T} = Dense{T, Vector{T}}(copy(data(D)))
 
 storage_convert(::Type{Array},D::Dense,is::IndexSet) = reshape(data(D),dims(is))
 
@@ -127,10 +127,10 @@ function storage_svd(Astore::Dense{T},
 
   u = Index(dS,utags)
   v = u(vtags)
-  Uis,Ustore = IndexSet(Lis...,u),Dense{T}(vec(MU))
+  Uis,Ustore = IndexSet(Lis...,u),Dense{T, Vector{T}}(vec(MU))
   #TODO: make a diag storage
-  Sis,Sstore = IndexSet(u,v),Dense{Float64}(vec(Matrix(Diagonal(MS))))
-  Vis,Vstore = IndexSet(Ris...,v),Dense{T}(Vector{T}(vec(MV)))
+  Sis,Sstore = IndexSet(u,v),Dense{Float64, Vector{Float64}}(vec(Matrix(Diagonal(MS))))
+  Vis,Vstore = IndexSet(Ris...,v),Dense{T, Vector{T}}(Vector{T}(vec(MV)))
 
   return (Uis,Ustore,Sis,Sstore,Vis,Vstore)
 end
