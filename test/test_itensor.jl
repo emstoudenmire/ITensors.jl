@@ -49,7 +49,8 @@ digits(::Type{T},i,j,k) where {T} = T(i*10^2+j*10+k)
   end
   @testset "Test norm(ITensor)" begin
     A = randomITensor(SType,i,j,k)
-    @test norm(A)≈sqrt(scalar(dag(A)*A))
+    B = dag(A)*A
+    @test norm(A)≈sqrt(scalar(B))
   end
   @testset "Test add ITensors" begin
     A = randomITensor(SType,i,j,k)

@@ -1,4 +1,5 @@
-
+using CuArrays
+using CuArrays.CUBLAS
 # Why do we need to do this?
 # Why not just get the extents from the indices?
 function compute_extents(r::Int,
@@ -446,30 +447,32 @@ function contract!(C::Array{T},
   p.PA = inv(Permutation(p.PA)).data
   p.PB = inv(Permutation(p.PB)).data
   p.PC = inv(Permutation(p.PC)).data
-
+  dA   = CuArray(A)
+  dB   = CuArray(B)
+  dC   = CuArray(C)
   tA = 'N'
   if p.permuteA
-    aref = reshape(permutedims(A,p.PA),p.dmid,p.dleft)
+    aref = reshape(permutedims(dA,p.PA),p.dmid,p.dleft)
     tA = 'T'
   else
     #A doesn't have to be permuted
     if Atrans(p)
-      aref = reshape(A,p.dmid,p.dleft)
+      aref = reshape(dA,p.dmid,p.dleft)
       tA = 'T'
     else
-      aref = reshape(A,p.dleft,p.dmid)
+      aref = reshape(dA,p.dleft,p.dmid)
     end
   end
 
   tB = 'N'
   if p.permuteB
-    bref = reshape(permutedims(B,p.PB),p.dmid,p.dright)
+    bref = reshape(permutedims(dB,p.PB),p.dmid,p.dright)
   else
     if Btrans(p)
-      bref = reshape(B,p.dright,p.dmid)
+      bref = reshape(dB,p.dright,p.dmid)
       tB = 'T'
     else
-      bref = reshape(B,p.dmid,p.dright)
+      bref = reshape(dB,p.dmid,p.dright)
     end
   end
 
@@ -477,7 +480,7 @@ function contract!(C::Array{T},
     cref = reshape(copy(C),p.dleft,p.dright)
   else
     if Ctrans(p)
-      cref = reshape(C,p.dleft,p.dright)
+      cref = reshape(dC,p.dleft,p.dright)
       if tA=='N' && tB=='N'
         (aref,bref) = (bref,aref)
         tA = tB = 'T'
@@ -486,15 +489,16 @@ function contract!(C::Array{T},
         tA = tB = 'N'
       end
     else
-      cref = reshape(C,p.dleft,p.dright)
+      cref = reshape(dC,p.dleft,p.dright)
     end
   end
 
-  BLAS.gemm!(tA,tB,promote_type(T,Tα)(α),aref,bref,promote_type(T,Tβ)(β),cref)
+  CUBLAS.gemm_wrapper!(cref, tA,tB,aref,bref,promote_type(T,Tα)(α),promote_type(T,Tβ)(β))
 
   if p.permuteC
-    permutedims!(C,reshape(cref,p.newCrange...),p.PC)
+    permutedims!(dC,reshape(cref,p.newCrange...),p.PC)
   end
+  copyto!(C, collect(dC))
   return
 end
 
