@@ -103,33 +103,35 @@ function storage_svd(Astore::Dense{T, S},
                      Ris::IndexSet;
                      kwargs...
                     ) where {T, S<:Array}
-  maxm::Int = get(kwargs,:maxm,min(dim(Lis),dim(Ris)))
-  minm::Int = get(kwargs,:minm,1)
-  cutoff::Float64 = get(kwargs,:cutoff,0.0)
-  absoluteCutoff::Bool = get(kwargs,:absoluteCutoff,false)
-  doRelCutoff::Bool = get(kwargs,:doRelCutoff,true)
-  utags::String = get(kwargs,:utags,"Link,u")
-  vtags::String = get(kwargs,:vtags,"Link,v")
-  MU, MS,MV = svd(reshape(data(Astore),dim(Lis),dim(Ris)))
+    maxm::Int = get(kwargs,:maxm,min(dim(Lis),dim(Ris)))
+    minm::Int = get(kwargs,:minm,1)
+    cutoff::Float64 = get(kwargs,:cutoff,0.0)
+    absoluteCutoff::Bool = get(kwargs,:absoluteCutoff,false)
+    doRelCutoff::Bool = get(kwargs,:doRelCutoff,true)
+    utags::String = get(kwargs,:utags,"Link,u")
+    vtags::String = get(kwargs,:vtags,"Link,v")
 
-  sqr(x) = x^2
-  P = sqr.(MS)
-  truncate!(P;maxm=maxm,cutoff=cutoff,absoluteCutoff=absoluteCutoff,doRelCutoff=doRelCutoff)
-  dS = length(P)
-  if dS < length(MS)
-    MU = MU[:,1:dS]
-    resize!(MS,dS)
-    MV = MV[:,1:dS]
-  end
+    MU,MS,MV = svd(reshape(data(Astore),dim(Lis),dim(Ris)))
 
-  u = Index(dS,utags)
-  v = u(vtags)
-  Uis,Ustore = IndexSet(Lis...,u),Dense{T, Vector{T}}(vec(MU))
-  #TODO: make a diag storage
-  Sis,Sstore = IndexSet(u,v),Dense{Float64, Vector{Float64}}(vec(Matrix(Diagonal(MS))))
-  Vis,Vstore = IndexSet(Ris...,v),Dense{T, Vector{T}}(Vector{T}(vec(MV)))
+    sqr(x) = x^2
+    P = sqr.(MS)
+    truncate!(P;maxm=maxm,cutoff=cutoff,absoluteCutoff=absoluteCutoff,doRelCutoff=doRelCutoff)
+    dS = length(P)
 
-  return (Uis,Ustore,Sis,Sstore,Vis,Vstore)
+    if dS < length(MS)
+        MU = MU[:,1:dS]
+        resize!(MS,dS)
+        MV = MV[:,1:dS]
+    end
+
+    u = Index(dS,utags)
+    v = u(vtags)
+    Uis,Ustore = IndexSet(Lis...,u),Dense{T, S}(vec(MU))
+     #TODO: make a diag storage
+    Sis,Sstore = IndexSet(u,v),Dense{T, S}(vec(Matrix(Diagonal(MS))))
+    Vis,Vstore = IndexSet(Ris...,v),Dense{T, S}(S(vec(MV)))
+  
+    return (Uis,Ustore,Sis,Sstore,Vis,Vstore)
 end
 
 function storage_svd(Astore::Dense{T, S},
@@ -144,27 +146,25 @@ function storage_svd(Astore::Dense{T, S},
   doRelCutoff::Bool = get(kwargs,:doRelCutoff,true)
   utags::String = get(kwargs,:utags,"Link,u")
   vtags::String = get(kwargs,:vtags,"Link,v")
-  dMU,dMS,dMV = CUSOLVER.svd(reshape(data(Astore),(dim(Lis),dim(Ris))))
+  rsd = reshape(data(Astore),dim(Lis),dim(Ris))
+  MU,MS,MV = CUSOLVER.svd(rsd)
 
   sqr(x) = x^2
-  P = collect(sqr.(dMS))
+  P = collect(sqr.(MS))
   truncate!(P;maxm=maxm,cutoff=cutoff,absoluteCutoff=absoluteCutoff,doRelCutoff=doRelCutoff)
   dS = length(P)
-  MU = collect(dMU)
-  MS = collect(dMS)
-  MV = collect(dMV)
   if dS < length(MS)
     MU = MU[:,1:dS]
-    resize!(MS,dS)
+    MS = MS[1:dS]
     MV = MV[:,1:dS]
   end
 
   u = Index(dS,utags)
   v = u(vtags)
-  Uis,Ustore = IndexSet(Lis...,u),Dense{T, Vector{T}}(vec(MU))
+  Uis,Ustore = IndexSet(Lis...,u),Dense{T, CuVector{T}}(vec(MU))
   #TODO: make a diag storage
-  Sis,Sstore = IndexSet(u,v),Dense{Float64, Vector{Float64}}(vec(Matrix(Diagonal(MS))))
-  Vis,Vstore = IndexSet(Ris...,v),Dense{T, Vector{T}}(Vector{T}(vec(MV)))
+  Sis,Sstore = IndexSet(u,v),Dense{T, CuVector{T}}(vec(CuMatrix(Diagonal(MS))))
+  Vis,Vstore = IndexSet(Ris...,v),Dense{T, CuVector{T}}(CuVector{T}(vec(MV)))
 
   return (Uis,Ustore,Sis,Sstore,Vis,Vstore)
 end
@@ -193,9 +193,7 @@ end
 
 function polar(A::AbstractMatrix)
   U,S,V = svd(A)
-  C = U*V'
-  D = V*Diagonal(S)*V'
-  return C, D
+  return U*V',V*Diagonal(S)*V'
 end
 
 #TODO: make one generic function storage_factorization(Astore,Lis,Ris,factorization)

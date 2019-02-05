@@ -70,10 +70,10 @@ uuid = "8f4d0f93-b110-5947-807f-2305c1781a2d"
 version = "1.2.0"
 
 [[CuArrays]]
-deps = ["AbstractFFTs", "Adapt", "CUDAapi", "CUDAdrv", "CUDAnative", "DiffRules", "ForwardDiff", "GPUArrays", "LinearAlgebra", "MacroTools", "NNlib", "Pkg", "Printf", "Random", "SparseArrays", "Test"]
-git-tree-sha1 = "c1cd8792ca783987fcba2ed0d6b3b58176e6b13e"
+deps = ["AbstractFFTs", "Adapt", "CUDAapi", "CUDAdrv", "CUDAnative", "DiffRules", "ForwardDiff", "GPUArrays", "LinearAlgebra", "MacroTools", "NNlib", "Pkg", "Printf", "Random", "SparseArrays"]
+path = "/mnt/home/khyatt/.julia/dev/CuArrays"
 uuid = "3a865a2d-5b23-5a0f-bc46-62713ec82fae"
-version = "0.9.1"
+version = "0.9.1+"
 
 [[DataStructures]]
 deps = ["InteractiveUtils", "OrderedCollections", "Random", "Serialization", "Test"]

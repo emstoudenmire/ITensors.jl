@@ -182,9 +182,9 @@ end # End Dense storage test
       U,S,V = svd(A,j,l)
       u = commonindex(U,S)
       v = commonindex(S,V)
-      @test collect(A)≈U*S*V
-      @test U*dag(prime(U,u))≈δ(SType,u,u') atol=1e-14
-      @test V*dag(prime(V,v))≈δ(SType,v,v') atol=1e-14
+      @test collect(A)≈collect(U*S*V)
+      @test collect(U*dag(prime(U,u)))≈δ(SType,u,u') atol=1e-14
+      @test collect(V*dag(prime(V,v)))≈δ(SType,v,v') atol=1e-14
     end
 
     @testset "Test SVD truncation" begin 
@@ -195,7 +195,7 @@ end # End Dense storage test
         S = Diagonal(s)
         T = CuITensor(IndexSet(ii,jj),Dense{Float64, CuVector{Float64}}(vec(CuArray(U*S*V'))))
         (U,S,V) = svd(T,ii;maxm=2)
-        @test norm(CuITensor(U*S*V)-T)≈sqrt(s[3]^2+s[4]^2)
+        @test norm(U*S*V-T)≈sqrt(s[3]^2+s[4]^2)
     end 
 
     @testset "Test QR decomposition of an ITensor" begin
