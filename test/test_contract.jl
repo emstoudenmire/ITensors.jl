@@ -230,8 +230,8 @@ end
     end
     @testset "Test contract ITensors (Vectorᵀ*Vector -> Scalar)" begin
       C = Ai*Bi
-      Ccollect = transpose(collect(Ai))*collect(Bi)
-      @test Array(Ccollect)≈scalar(C)
+      Ccollect = transpose(Array(collect(Ai)))*Array(collect(Bi))
+      @test Ccollect≈scalar(C)
     end
     #TODO: need to add back this outer product test
     #@testset "Test contract ITensors (Vector*Vectorᵀ -> Matrix)" begin
@@ -306,7 +306,7 @@ end
     @testset "Test contract ITensors (3-Tensor*Scalar -> 3-Tensor)" begin
       Aijk = permute(Aijk,i,j,k)
       C = Aijk*A
-      @test collect(permute(C,i,j,k))==scalar(A)*collect(Aijk)
+      @test collect(permute(C,i,j,k))≈scalar(A)*collect(Aijk)
     end
     @testset "Test contract ITensors (3-Tensor*Vector -> Matrix)" begin
       Aijk = permute(Aijk,i,j,k)
@@ -324,7 +324,7 @@ end
       Aijk = permute(Aijk,i,j,k)
       Aik = permute(Aik,i,k)
       C = Aijk*Aik
-      Ccollect = reshape(Array(collect(permute(Aijk,j,i,k)),dim(j)),dim(i)*dim(k))*vec(Array(collect(Aik)))
+      Ccollect = reshape(Array(collect(permute(Aijk,j,i,k))),dim(j),dim(i)*dim(k))*vec(Array(collect(Aik)))
       @test Ccollect≈Array(collect(C))
     end
     @testset "Test contract ITensors (3-Tensor*Matrix -> 3-Tensor)" begin

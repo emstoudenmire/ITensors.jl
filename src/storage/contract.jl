@@ -643,9 +643,9 @@ function contract(Cinds::IndexSet,
   # Create storage for output tensor
   Cstore = Dense{promote_type(SA,SB), CuVector{promote_type(SA,SB)}}(prod(Cdims))
 
-  Adata = reshape(data(Astore),Dims([Adims...]))
-  Bdata = reshape(data(Bstore),Dims([Bdims...]))
-  Cdata = reshape(data(Cstore),Dims([Cdims...]))
+  Adata = reshape(data(Astore),Adims)
+  Bdata = reshape(data(Bstore),Bdims)
+  Cdata = reshape(data(Cstore),Cdims)
 
   contract!(Cdata,Clabels,Adata,Alabels,Bdata,Blabels)
   return Cstore
