@@ -1,3 +1,4 @@
+using CuArrays
 using CuArrays.CUSOLVER
 
 struct Dense{T,S<:AbstractArray{<:T}} <: TensorStorage
@@ -17,7 +18,7 @@ getindex(D::Dense,i::Int) = data(D)[i]
 *(D::T,x::Number) where {T<:Dense} = T(x*data(D))
 *(x::Number,D::Dense) = D*x
 
-copy(D::Dense{T, Vector{T}}) where {T} = Dense{T, Vector{T}}(copy(data(D)))
+copy(D::Dense{T, S}) where {T, S} = Dense{T, S}(copy(data(D)))
 
 storage_convert(::Type{Array},D::Dense,is::IndexSet) = reshape(data(D),dims(is))
 
@@ -97,11 +98,11 @@ function storage_contract(Astore::TensorStorage,
   return (Cis,Cstore)
 end
 
-function storage_svd(Astore::Dense{T},
+function storage_svd(Astore::Dense{T, S},
                      Lis::IndexSet,
                      Ris::IndexSet;
                      kwargs...
-                    ) where {T}
+                    ) where {T, S<:Array}
   maxm::Int = get(kwargs,:maxm,min(dim(Lis),dim(Ris)))
   minm::Int = get(kwargs,:minm,1)
   cutoff::Float64 = get(kwargs,:cutoff,0.0)
@@ -109,8 +110,41 @@ function storage_svd(Astore::Dense{T},
   doRelCutoff::Bool = get(kwargs,:doRelCutoff,true)
   utags::String = get(kwargs,:utags,"Link,u")
   vtags::String = get(kwargs,:vtags,"Link,v")
-  dA = CuArray(data(Astore))
-  dMU,dMS,dMV = CUSOLVER.svd(reshape(dA,dim(Lis),dim(Ris)))
+  MU, MS,MV = svd(reshape(data(Astore),dim(Lis),dim(Ris)))
+
+  sqr(x) = x^2
+  P = sqr.(MS)
+  truncate!(P;maxm=maxm,cutoff=cutoff,absoluteCutoff=absoluteCutoff,doRelCutoff=doRelCutoff)
+  dS = length(P)
+  if dS < length(MS)
+    MU = MU[:,1:dS]
+    resize!(MS,dS)
+    MV = MV[:,1:dS]
+  end
+
+  u = Index(dS,utags)
+  v = u(vtags)
+  Uis,Ustore = IndexSet(Lis...,u),Dense{T, Vector{T}}(vec(MU))
+  #TODO: make a diag storage
+  Sis,Sstore = IndexSet(u,v),Dense{Float64, Vector{Float64}}(vec(Matrix(Diagonal(MS))))
+  Vis,Vstore = IndexSet(Ris...,v),Dense{T, Vector{T}}(Vector{T}(vec(MV)))
+
+  return (Uis,Ustore,Sis,Sstore,Vis,Vstore)
+end
+
+function storage_svd(Astore::Dense{T, S},
+                     Lis::IndexSet,
+                     Ris::IndexSet;
+                     kwargs...
+                    ) where {T, S<:CuArray}
+  maxm::Int = get(kwargs,:maxm,min(dim(Lis),dim(Ris)))
+  minm::Int = get(kwargs,:minm,1)
+  cutoff::Float64 = get(kwargs,:cutoff,0.0)
+  absoluteCutoff::Bool = get(kwargs,:absoluteCutoff,false)
+  doRelCutoff::Bool = get(kwargs,:doRelCutoff,true)
+  utags::String = get(kwargs,:utags,"Link,u")
+  vtags::String = get(kwargs,:vtags,"Link,v")
+  dMU,dMS,dMV = CUSOLVER.svd(reshape(data(Astore),(dim(Lis),dim(Ris))))
 
   sqr(x) = x^2
   P = collect(sqr.(dMS))
@@ -157,16 +191,15 @@ function storage_eigen(Astore::T,Lis::IndexSet,Ris::IndexSet,matrixtype::Type{S}
   return (Uis,Ustore,Dis,Dstore)
 end
 
-function polar(A::Matrix)
-  dA = CuArray(A) 
-  U,S,V = svd(dA)
-  C = collect(U*V')
-  D = collect(V*Diagonal(S)*V')
+function polar(A::AbstractMatrix)
+  U,S,V = svd(A)
+  C = U*V'
+  D = V*Diagonal(S)*V'
   return C, D
 end
 
 #TODO: make one generic function storage_factorization(Astore,Lis,Ris,factorization)
-function storage_qr(Astore::T,Lis::IndexSet,Ris::IndexSet) where {T<:Dense}
+function storage_qr(Astore::Dense{S, T},Lis::IndexSet,Ris::IndexSet) where {T<:Array, S<:Number}
   dim_left = dim(Lis)
   dim_right = dim(Ris)
   dQR = qr!(reshape(CuArray(data(Astore)),dim_left,dim_right))
@@ -176,20 +209,47 @@ function storage_qr(Astore::T,Lis::IndexSet,Ris::IndexSet) where {T<:Dense}
   u = Index(dim_middle,"Link,u")
   #Must call Matrix() on MQ since the QR decomposition outputs a sparse
   #form of the decomposition
-  Qis,Qstore = IndexSet(Lis...,u),T(vec(Matrix(MQ)))
-  Pis,Pstore = IndexSet(u,Ris...),T(vec(Matrix(MP)))
+  Qis,Qstore = IndexSet(Lis...,u),Dense{S, T}(vec(Matrix(MQ)))
+  Pis,Pstore = IndexSet(u,Ris...),Dense{S, T}(vec(Matrix(MP)))
   return (Qis,Qstore,Pis,Pstore)
 end
 
-function storage_polar(Astore::T,Lis::IndexSet,Ris::IndexSet) where {T<:Dense}
+function storage_qr(Astore::Dense{S, T},Lis::IndexSet,Ris::IndexSet) where {T<:CuArray, S<:Number}
+  dim_left = dim(Lis)
+  dim_right = dim(Ris)
+  dQR = qr!(reshape(data(Astore),dim_left,dim_right))
+  MQ = dQR.Q
+  MP = dQR.R
+  dim_middle = min(dim_left,dim_right)
+  u = Index(dim_middle,"Link,u")
+  #Must call Matrix() on MQ since the QR decomposition outputs a sparse
+  #form of the decomposition
+  Qis,Qstore = IndexSet(Lis...,u),Dense{S, T}(vec(CuArray(MQ)))
+  Pis,Pstore = IndexSet(u,Ris...),Dense{S, T}(vec(CuArray(MP)))
+  return (Qis,Qstore,Pis,Pstore)
+end
+
+function storage_polar(Astore::Dense{S, T},Lis::IndexSet,Ris::IndexSet) where {T<:Array, S<:Number}
   dim_left = dim(Lis)
   dim_right = dim(Ris)
   MQ,MP = polar(reshape(data(Astore),dim_left,dim_right))
   dim_middle = min(dim_left,dim_right)
   #u = Index(dim_middle,"Link,u")
   Uis = addtags(Ris,"u")
-  Qis,Qstore = IndexSet(Lis...,Uis...),T(vec(MQ))
-  Pis,Pstore = IndexSet(Uis...,Ris...),T(vec(MP))
+  Qis,Qstore = IndexSet(Lis...,Uis...),Dense{S, T}(vec(Matrix(MQ)))
+  Pis,Pstore = IndexSet(Uis...,Ris...),Dense{S, T}(vec(Matrix(MP)))
+  return (Qis,Qstore,Pis,Pstore)
+end
+
+function storage_polar(Astore::Dense{S, T},Lis::IndexSet,Ris::IndexSet) where {T<:CuArray, S<:Number}
+  dim_left = dim(Lis)
+  dim_right = dim(Ris)
+  MQ,MP = polar(reshape(data(Astore),dim_left,dim_right))
+  dim_middle = min(dim_left,dim_right)
+  #u = Index(dim_middle,"Link,u")
+  Uis = addtags(Ris,"u")
+  Qis,Qstore = IndexSet(Lis...,Uis...),Dense{S, T}(vec(MQ))
+  Pis,Pstore = IndexSet(Uis...,Ris...),Dense{S, T}(vec(MP))
   return (Qis,Qstore,Pis,Pstore)
 end
 

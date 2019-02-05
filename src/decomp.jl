@@ -78,9 +78,9 @@ function truncate!(P::Vector{Float64};
   return truncerr,docut
 end
 
-function factorize(A::ITensor,
+function factorize(A::T,
                    left_inds::Index...;
-                   factorization=factorization)
+                   factorization=factorization) where {T<:Tensor}
   Lis = IndexSet(left_inds...)
   #TODO: make this a debug level check
   Lis⊈inds(A) && throw(ErrorException("Input indices must be contained in the ITensor"))
@@ -97,12 +97,12 @@ function factorize(A::ITensor,
   else
     error("Factorization $factorization not supported")
   end
-  return ITensor(Qis,Qstore),ITensor(Pis,Pstore)
+  return T(Qis,Qstore),T(Pis,Pstore)
 end
 
-qr(A::ITensor,left_inds::Index...) = factorize(A,left_inds...;factorization=:QR)
+qr(A::Tensor,left_inds::Index...) = factorize(A,left_inds...;factorization=:QR)
 
-polar(A::ITensor,left_inds::Index...) = factorize(A,left_inds...;factorization=:polar)
+polar(A::Tensor,left_inds::Index...) = factorize(A,left_inds...;factorization=:polar)
 
 """
     svd(A::ITensor,
@@ -123,7 +123,7 @@ arguments provided. The following keyword arguments are recognized:
 * cutoff [Float64]
 * truncate [Bool]
 """
-function svd(A::ITensor,
+function svd(A::Tensor,
              left_inds::Index...;
              kwargs...
             )
