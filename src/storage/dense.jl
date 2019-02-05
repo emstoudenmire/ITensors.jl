@@ -1,3 +1,4 @@
+using CuArrays.CUSOLVER
 
 struct Dense{T} <: TensorStorage
   data::Vector{T}
@@ -108,14 +109,16 @@ function storage_svd(Astore::Dense{T},
   doRelCutoff::Bool = get(kwargs,:doRelCutoff,true)
   utags::String = get(kwargs,:utags,"Link,u")
   vtags::String = get(kwargs,:vtags,"Link,v")
-
-  MU,MS,MV = svd(reshape(data(Astore),dim(Lis),dim(Ris)))
+  dA = CuArray(data(Astore))
+  dMU,dMS,dMV = CUSOLVER.svd(reshape(dA,dim(Lis),dim(Ris)))
 
   sqr(x) = x^2
-  P = sqr.(MS)
+  P = collect(sqr.(dMS))
   truncate!(P;maxm=maxm,cutoff=cutoff,absoluteCutoff=absoluteCutoff,doRelCutoff=doRelCutoff)
   dS = length(P)
-
+  MU = collect(dMU)
+  MS = collect(dMS)
+  MV = collect(dMV)
   if dS < length(MS)
     MU = MU[:,1:dS]
     resize!(MS,dS)
@@ -156,7 +159,9 @@ end
 function storage_qr(Astore::T,Lis::IndexSet,Ris::IndexSet) where {T<:Dense}
   dim_left = dim(Lis)
   dim_right = dim(Ris)
-  MQ,MP = qr(reshape(data(Astore),dim_left,dim_right))
+  dQR = qr!(reshape(CuArray(data(Astore)),dim_left,dim_right))
+  MQ = collect(dQR.Q)
+  MP = collect(dQR.R)
   dim_middle = min(dim_left,dim_right)
   u = Index(dim_middle,"Link,u")
   #Must call Matrix() on MQ since the QR decomposition outputs a sparse
