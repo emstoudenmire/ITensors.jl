@@ -138,8 +138,15 @@ end
 function storage_eigen(Astore::T,Lis::IndexSet,Ris::IndexSet,matrixtype::Type{S},truncate::Int,tags::String) where {T<:Dense,S}
   dim_left = dim(Lis)
   dim_right = dim(Ris)
-  MD,MU = eigen(S(reshape(data(Astore),dim_left,dim_right)))
-
+  local d_W, d_V
+  d_A = reshape(CuArray(data(Astore)),dim_left,dim_right)
+  if( S <: Complex )
+    d_W, d_V   = CUSOLVER.heevd!('V','U', d_A)
+  else
+    d_W, d_V   = CUSOLVER.syevd!('V','U', d_A)
+  end
+  MD = collect(d_W)
+  MU = collect(d_V)
   #TODO: include truncation parameters as keyword arguments
   dim_middle = min(dim_left,dim_right,truncate)
   u = Index(dim_middle,tags)
@@ -151,8 +158,11 @@ function storage_eigen(Astore::T,Lis::IndexSet,Ris::IndexSet,matrixtype::Type{S}
 end
 
 function polar(A::Matrix)
-  U,S,V = svd(A)
-  return U*V',V*Diagonal(S)*V'
+  dA = CuArray(A) 
+  U,S,V = svd(dA)
+  C = collect(U*V')
+  D = collect(V*Diagonal(S)*V')
+  return C, D
 end
 
 #TODO: make one generic function storage_factorization(Astore,Lis,Ris,factorization)
