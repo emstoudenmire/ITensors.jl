@@ -78,9 +78,9 @@ function truncate!(P::Vector{Float64};
   return truncerr,docut
 end
 
-function factorize(A::T,
+function factorize(A::ITensor,
                    left_inds::Index...;
-                   factorization=factorization) where {T<:Tensor}
+                   factorization=factorization)
   Lis = IndexSet(left_inds...)
   #TODO: make this a debug level check
   Lis⊈inds(A) && throw(ErrorException("Input indices must be contained in the ITensor"))
@@ -97,12 +97,12 @@ function factorize(A::T,
   else
     error("Factorization $factorization not supported")
   end
-  return T(Qis,Qstore),T(Pis,Pstore)
+  return ITensor(Qis,Qstore),ITensor(Pis,Pstore)
 end
 
-qr(A::Tensor,left_inds::Index...) = factorize(A,left_inds...;factorization=:QR)
+qr(A::ITensor,left_inds::Index...) = factorize(A,left_inds...;factorization=:QR)
 
-polar(A::Tensor,left_inds::Index...) = factorize(A,left_inds...;factorization=:polar)
+polar(A::ITensor,left_inds::Index...) = factorize(A,left_inds...;factorization=:polar)
 
 """
     svd(A::ITensor,
@@ -123,10 +123,10 @@ arguments provided. The following keyword arguments are recognized:
 * cutoff [Float64]
 * truncate [Bool]
 """
-function svd(A::T,
+function svd(A::ITensor,
              left_inds::Index...;
              kwargs...
-            ) where {T<:Tensor}
+            )
   Lis = IndexSet(left_inds...)
   #TODO: make this a debug level check
   Lis⊈inds(A) && throw(ErrorException("Input indices must be contained in the ITensor"))
@@ -137,6 +137,6 @@ function svd(A::T,
   #AND/OR use svd!() to overwrite the data of A to save memory
   A = permute(A,Lis...,Ris...)
   Uis,Ustore,Sis,Sstore,Vis,Vstore = storage_svd(store(A),Lis,Ris;kwargs...)
-  return T(Uis,Ustore),T(Sis,Sstore),T(Vis,Vstore)
+  return ITensor(Uis,Ustore),ITensor(Sis,Sstore),ITensor(Vis,Vstore)
 end
 

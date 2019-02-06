@@ -1,19 +1,10 @@
 
-abstract type Tensor end
-struct ITensor <: Tensor
+struct ITensor
   inds::IndexSet
   store::TensorStorage
   #TODO: check that the storage is consistent with the
   #total dimension of the indices
   ITensor(is::IndexSet,st::TensorStorage) = new(is,st)
-end
-
-struct CuITensor <: Tensor
-  inds::IndexSet
-  store::TensorStorage
-  #TODO: check that the storage is consistent with the
-  #total dimension of the indices
-  CuITensor(is::IndexSet,st::TensorStorage) = new(is,st)
 end
 
 # ITensor c-tors
@@ -38,34 +29,40 @@ ITensor(A::Array{S},inds::Index...) where {S<:Number} = ITensor(A,IndexSet(inds.
 
 ITensor() = ITensor(IndexSet(),Dense{Nothing}())
 
-# CuITensor c-tors
-function CuITensor(::Type{T},inds::IndexSet) where {T<:Number}
-    return CuITensor(inds,Dense{T, CuVector{T}}(dim(inds)))
+function cuITensor(::Type{T},inds::IndexSet) where {T<:Number}
+    return ITensor(inds,Dense{T, CuVector{T}}(dim(inds)))
 end
-CuITensor(::Type{T},inds::Index...) where {T<:Number} = CuITensor(T,IndexSet(inds...))
+cuITensor(::Type{T},inds::Index...) where {T<:Number} = ITensor(T,IndexSet(inds...))
 
-CuITensor(is::IndexSet) = CuITensor(Float64,is...)
-CuITensor(inds::Index...) = CuITensor(IndexSet(inds...))
+cuITensor(is::IndexSet) = cuITensor(Float64,is...)
+cuITensor(inds::Index...) = cuITensor(IndexSet(inds...))
 
-function CuITensor(x::S,inds::IndexSet) where {S<:Number}
-    return CuITensor(inds,Dense{S, CuVector{S}}(x,dim(inds)))
+function cuITensor(x::S,inds::IndexSet) where {S<:Number}
+    return ITensor(inds,Dense{S, CuVector{S}}(x,dim(inds)))
 end
-CuITensor(x::S,inds::Index...) where {S<:Number} = CuITensor(x,IndexSet(inds...))
+cuITensor(x::S,inds::Index...) where {S<:Number} = cuITensor(x,IndexSet(inds...))
 
 #TODO: check that the size of the Array matches the Index dimensions
-function CuITensor(A::Array{S},inds::IndexSet) where {S<:Number}
-    return CuITensor(inds,Dense{S, CuVector{S}}(CuArray(A)))
+function cuITensor(A::Array{S},inds::IndexSet) where {S<:Number}
+    return ITensor(inds,Dense{S, CuVector{S}}(CuArray(A)))
 end
-CuITensor(A::Array{S},inds::Index...) where {S<:Number} = CuITensor(CuArray(A),IndexSet(inds...))
-function CuITensor(A::CuArray{S},inds::IndexSet) where {S<:Number}
-    return CuITensor(inds,Dense{S, CuVector{S}}(A))
+function cuITensor(A::CuArray{S},inds::IndexSet) where {S<:Number}
+    return ITensor(inds,Dense{S, CuVector{S}}(A))
 end
-CuITensor(A::CuArray{S},inds::Index...) where {S<:Number} = CuITensor(A,IndexSet(inds...))
+cuITensor(A::Array{S},inds::Index...) where {S<:Number} = cuITensor(A,IndexSet(inds...))
+cuITensor(A::CuArray{S},inds::Index...) where {S<:Number} = cuITensor(A,IndexSet(inds...))
+cuITensor(A::ITensor) = cuITensor(A.store.data,A.inds)
 
-CuITensor() = CuITensor(IndexSet(),Dense{Nothing}())
+cuITensor() = cuITensor(IndexSet(),Dense{Nothing}())
 
-CuITensor(I::ITensor) = CuITensor(CuVector{eltype(I.store.data)}(I.store.data), I.inds)
-Base.collect(CI::CuITensor) = ITensor(collect(CI.store.data), CI.inds) 
+function Base.collect(A::ITensor)
+    if typeof(A.store.data) <: CuArray
+        return ITensor(A.inds, collect(A.store))    
+    else
+        return A
+    end
+end
+
 # This is just a stand-in for a proper delta/diag storage type
 function delta(::Type{T},inds::Index...) where {T}
   d = ITensor(zero(T),inds...)
@@ -78,18 +75,17 @@ end
 delta(inds::Index...) = delta(Float64,inds...)
 const δ = delta
 
-inds(T::Tensor) = T.inds
-store(T::Tensor) = T.store
-eltype(T::Tensor) = eltype(store(T))
+inds(T::ITensor) = T.inds
+store(T::ITensor) = T.store
+eltype(T::ITensor) = eltype(store(T))
 
-order(T::Tensor) = order(inds(T))
-dims(T::Tensor) = dims(inds(T))
-dim(T::Tensor) = dim(inds(T))
+order(T::ITensor) = order(inds(T))
+dims(T::ITensor) = dims(inds(T))
+dim(T::ITensor) = dim(inds(T))
 
-copy(T::IT) where {IT<:Tensor} = IT(copy(inds(T)),copy(store(T)))
+copy(T::ITensor) = ITensor(copy(inds(T)),copy(store(T)))
 
 convert(::Type{Array},T::ITensor) = storage_convert(Array,store(T),inds(T))
-convert(::Type{CuArray},T::CuITensor) = storage_convert(CuArray,store(T),inds(T))
 Array(T::ITensor) = convert(Array,T::ITensor)
 
 getindex(T::ITensor) = storage_getindex(store(T),inds(T))
@@ -107,51 +103,27 @@ function setindex!(T::ITensor,x::Number,ivs::IndexVal...)
   return setindex!(T,x,vals...)
 end
 
-function commonindex(A::T,B::S) where {T<:Tensor, S<:Tensor}
+function commonindex(A::ITensor,B::ITensor)
   return commonindex(inds(A),inds(B))
 end
-function commoninds(A::T,B::S) where {T<:Tensor, S<:Tensor}
+function commoninds(A::ITensor,B::ITensor)
   return inds(A)∩inds(B)
 end
 
-hasindex(T::S,I::Index) where {S<:Tensor} = hasindex(inds(T),I)
+hasindex(T::ITensor,I::Index) = hasindex(inds(T),I)
 
 # TODO: should this make a copy of the storage?
-function prime(A::T,vargs...) where {T<:Tensor}
-  return T(prime(inds(A),vargs...),store(A))
-end
-adjoint(A::T) where {T<:Tensor} = prime(A)
-function primeexcept(A::T,vargs...) where {T<:Tensor}
-  return T(primeexcept(inds(A),vargs...),store(A))
-end
-function setprime(A::T,vargs...) where {T<:Tensor}
-  return T(setprime(inds(A),vargs...),store(A))
-end
-function noprime(A::T,vargs...) where {T<:Tensor}
-  return T(noprime(inds(A),vargs...),store(A))
-end
-function mapprime(A::T,vargs...) where {T<:Tensor}
-  return T(mapprime(inds(A),vargs...),store(A))
-end
-function swapprime(A::T,vargs...) where {T<:Tensor}
-  return T(swapprime(inds(A),vargs...),store(A))
-end
-
-function addtags(A::T,vargs...) where {T<:Tensor}
-  return T(addtags(inds(A),vargs...),store(A))
-end
-
-function removetags(A::T,vargs...) where {T<:Tensor}
-  return T(removetags(inds(A),vargs...),store(A))
-end
-
-function replacetags(A::T,vargs...) where {T<: Tensor}
-  return T(replacetags(inds(A),vargs...),store(A))
-end
-
-function swaptags(A::T,vargs...) where {T<: Tensor}
-  return T(swaptags(inds(A),vargs...),store(A))
-end
+prime(A::ITensor,vargs...) = ITensor(prime(inds(A),vargs...),store(A))
+adjoint(A::ITensor)  = prime(A)
+primeexcept(A::ITensor,vargs...) = ITensor(primeexcept(inds(A),vargs...),store(A))
+setprime(A::ITensor,vargs...) = ITensor(setprime(inds(A),vargs...),store(A))
+noprime(A::ITensor,vargs...) = ITensor(noprime(inds(A),vargs...),store(A))
+mapprime(A::ITensor,vargs...) = ITensor(mapprime(inds(A),vargs...),store(A))
+swapprime(A::ITensor,vargs...) = ITensor(swapprime(inds(A),vargs...),store(A))
+addtags(A::ITensor,vargs...) = ITensor(addtags(inds(A),vargs...),store(A))
+removetags(A::ITensor,vargs...) = ITensor(removetags(inds(A),vargs...),store(A))
+replacetags(A::ITensor,vargs...) = ITensor(replacetags(inds(A),vargs...),store(A))
+swaptags(A::ITensor,vargs...) = ITensor(swaptags(inds(A),vargs...),store(A))
 
 
 function ==(A::ITensor,B::ITensor)::Bool
@@ -163,21 +135,21 @@ function ==(A::ITensor,B::ITensor)::Bool
   return true
 end
 
-function isapprox(A::T,
-                  B::T;
+function isapprox(A::ITensor,
+                  B::ITensor;
                   atol::Real=0.0,
-                  rtol::Real=Base.rtoldefault(eltype(A),eltype(B),atol)) where {T<:Tensor}
+                  rtol::Real=Base.rtoldefault(eltype(A),eltype(B),atol))
   return norm(A-B) <= atol + rtol*max(norm(A),norm(B))
 end
 
-function scalar(T::Tensor)
+function scalar(T::ITensor)
   if !(order(T)==0 || dim(T)==1)
     error("ITensor is not a scalar")
   end
   return storage_scalar(store(T))
 end
 
-randn!(T::Tensor) = storage_randn!(store(T))
+randn!(T::ITensor) = storage_randn!(store(T))
 
 function randomITensor(::Type{S},inds::IndexSet) where {S<:Number}
   T = ITensor(S,inds)
@@ -189,7 +161,7 @@ randomITensor(inds::IndexSet) = randomITensor(Float64,inds)
 randomITensor(inds::Index...) = randomITensor(Float64,IndexSet(inds...))
 
 function randomCuITensor(::Type{S},inds::IndexSet) where {S<:Number}
-  T = CuITensor(S,inds)
+  T = cuITensor(S,inds)
   randn!(T)
   return T
 end
@@ -197,48 +169,41 @@ randomCuITensor(::Type{S},inds::Index...) where {S<:Number} = randomCuITensor(S,
 randomCuITensor(inds::IndexSet) = randomCuITensor(Float64,inds)
 randomCuITensor(inds::Index...) = randomCuITensor(Float64,IndexSet(inds...))
 
-norm(T::Tensor) = storage_norm(store(T))
+norm(T::ITensor) = storage_norm(store(T))
 dag(T::ITensor) = ITensor(storage_dag(store(T),inds(T))...)
-dag(T::CuITensor) = CuITensor(storage_dag(store(T),inds(T))...)
 
-function permute(T::IT,permTinds::IndexSet) where {IT<:Tensor}
+function permute(T::ITensor,permTinds::IndexSet)
   permTstore = typeof(store(T))(dim(T))
   storage_permute!(permTstore,permTinds,store(T),inds(T))
-  return IT(permTinds,permTstore)
+  return ITensor(permTinds,permTstore)
 end
-permute(T::Tensor,new_inds::Index...) = permute(T,IndexSet(new_inds...))
+permute(T::ITensor,new_inds::Index...) = permute(T,IndexSet(new_inds...))
 
-function add!(A::T, B::T) where {T<:Tensor}
-  storage_add!(store(A),inds(A),store(B),inds(B))
-end
+add!(A::ITensor, B::ITensor) = storage_add!(store(A),inds(A),store(B),inds(B))
 
 #TODO: improve these using a storage_mult call
 *(A::ITensor,x::Number) = A*ITensor(x)
-*(A::CuITensor,x::Number) = A*CuITensor(x)
 *(x::Number,A::ITensor) = A*x
-*(x::Number,A::CuITensor) = A*x
 
 /(A::ITensor,x::Number) = A*ITensor(1.0/x)
-/(A::CuITensor,x::Number) = A*CuITensor(1.0/x)
-
--(A::Tensor) = -one(eltype(A))*A
-function +(A::T,B::T) where {T<:Tensor}
+-(A::ITensor) = -one(eltype(A))*A
+function +(A::ITensor,B::ITensor)
   #A==B && return 2*A
   C = copy(A)
   add!(C,B)
   return C
 end
--(A::T,B::T) where {T<:Tensor} = A+(-B)
+-(A::ITensor,B::ITensor) = A+(-B)
 
-function *(A::T,B::T) where {T<:Tensor}
+function *(A::ITensor,B::ITensor)
   #TODO: Add special case of A==B
   #A==B && return ITensor(norm(A)^2)
   (Cis,Cstore) = storage_contract(store(A),inds(A),store(B),inds(B))
-  C = T(Cis,Cstore)
+  C = ITensor(Cis,Cstore)
   return C
 end
 
-function findtags(T::Tensor,
+function findtags(T::ITensor,
                   tags::String)::Index
   ts = TagSet(tags)
   for i in inds(T)

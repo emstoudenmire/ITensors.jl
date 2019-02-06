@@ -8,6 +8,11 @@ struct Dense{T,S<:AbstractArray{<:T}} <: TensorStorage
   Dense{T, S}(x::T, size::Integer) where {T<:Number, S<:AbstractArray{<:T}} = new{T, S}(fill(x, size))
   Dense{T, S}() where {T<:Number, S<:AbstractArray{<:T}} = new{T, S}(S{T}())
 end
+  
+Dense{T, SA}(x::Dense{T, SB}) where {T<:Number, SA<:CuArray, SB<:Array} = Dense{T, S}(CuArray(x))
+Dense{T, SA}(x::Dense{T, SB}) where {T<:Number, SA<:Array, SB<:CuArray} = Dense{T, S}(collect(x.data))
+Base.collect(x::Dense{T, S}) where {T<:Number, S<:CuArray} = Dense{T, Vector{T}}(collect(x.data))
+Base.collect(x::Dense{T, S}) where {T<:Number, S<:Array} = x
 
 data(D::Dense) = D.data
 length(D::Dense) = length(data(D))

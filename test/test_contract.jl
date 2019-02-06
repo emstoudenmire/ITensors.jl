@@ -192,7 +192,7 @@ digits(::Type{T},i,j,k) where {T} = T(i*10^2+j*10+k)
   end # End contraction testset
 end
 
-@testset "CuITensor $T Contractions" for T ∈ (Float64,ComplexF64)
+@testset "cuITensor $T Contractions" for T ∈ (Float64,ComplexF64)
   mi,mj,mk,ml,mα = 2,3,4,5,6,7
   i = Index(mi,"i")
   j = Index(mj,"j")
@@ -200,31 +200,31 @@ end
   l = Index(ml,"l")
   α = Index(mα,"α") 
   @testset "Test contract ITensors" begin
-      A = CuITensor(randomITensor(T))
-      B = CuITensor(randomITensor(T))
-      Ai = CuITensor(randomITensor(T,i))
-      Bi = CuITensor(randomITensor(T,i))
-      Aj = CuITensor(randomITensor(T,j))
-      Aij = CuITensor(randomITensor(T,i,j))
-      Bij = CuITensor(randomITensor(T,i,j))
-      Aik = CuITensor(randomITensor(T,i,k))
-      Ajk = CuITensor(randomITensor(T,j,k))
-      Ajl = CuITensor(randomITensor(T,j,l))
-      Akl = CuITensor(randomITensor(T,k,l))
-      Aijk = CuITensor(randomITensor(T,i,j,k))
-      Ajkl = CuITensor(randomITensor(T,j,k,l))
-      Aikl = CuITensor(randomITensor(T,i,k,l))
-      Aklα = CuITensor(randomITensor(T,k,l,α))
-      Aijkl = CuITensor(randomITensor(T,i,j,k,l))
-    @testset "Test contract CuITensor (Scalar*Scalar -> Scalar)" begin
+      A = cuITensor(randomITensor(T))
+      B = cuITensor(randomITensor(T))
+      Ai = cuITensor(randomITensor(T,i))
+      Bi = cuITensor(randomITensor(T,i))
+      Aj = cuITensor(randomITensor(T,j))
+      Aij = cuITensor(randomITensor(T,i,j))
+      Bij = cuITensor(randomITensor(T,i,j))
+      Aik = cuITensor(randomITensor(T,i,k))
+      Ajk = cuITensor(randomITensor(T,j,k))
+      Ajl = cuITensor(randomITensor(T,j,l))
+      Akl = cuITensor(randomITensor(T,k,l))
+      Aijk = cuITensor(randomITensor(T,i,j,k))
+      Ajkl = cuITensor(randomITensor(T,j,k,l))
+      Aikl = cuITensor(randomITensor(T,i,k,l))
+      Aklα = cuITensor(randomITensor(T,k,l,α))
+      Aijkl = cuITensor(randomITensor(T,i,j,k,l))
+    @testset "Test contract cuITensor (Scalar*Scalar -> Scalar)" begin
       C = A*B
       @test scalar(C)≈scalar(A)*scalar(B)
     end
-    @testset "Test contract CuITensor (Scalar*Vector -> Vector)" begin
+    @testset "Test contract cuITensor (Scalar*Vector -> Vector)" begin
       C = A*Ai
       @test collect(C)≈scalar(A)*collect(Ai)
     end
-    @testset "Test contract CuITensor (Vector*Scalar -> Vector)" begin
+    @testset "Test contract cuITensor (Vector*Scalar -> Vector)" begin
       C = Aj*A
       @test collect(C)≈scalar(A)*collect(Aj)
     end

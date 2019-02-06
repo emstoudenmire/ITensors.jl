@@ -109,7 +109,7 @@ digits(::Type{T},i,j,k) where {T} = T(i*10^2+j*10+k)
   end # End ITensor factorization testset
 end # End Dense storage test
 # gpu tests!
-@testset "CuITensor, Dense{$SType} storage" for SType ∈ (Float64,)#,ComplexF64)
+@testset "cuITensor, Dense{$SType} storage" for SType ∈ (Float64,)#,ComplexF64)
   mi,mj,mk,ml,mα = 2,3,4,5,6,7
   i = Index(mi,"i")
   j = Index(mj,"j")
@@ -117,17 +117,17 @@ end # End Dense storage test
   l = Index(ml,"l")
   α = Index(mα,"α") 
   @testset "Set and get values with IndexVals" begin
-    A = ITensor(SType,i,j,k)
+    A = cuITensor(SType,i,j,k)
     for ii ∈ 1:dim(i), jj ∈ 1:dim(j), kk ∈ 1:dim(k)
       A[k(kk),j(jj),i(ii)] = digits(SType,ii,jj,kk)
     end
-    CA = CuITensor(A)
+    CA = cuITensor(A)
     AA = collect(CA)
     for ii ∈ 1:dim(i), jj ∈ 1:dim(j), kk ∈ 1:dim(k)
       @test AA[j(jj),k(kk),i(ii)]==digits(SType,ii,jj,kk)
     end
   end
-  @testset "Test permute(CuITensor,Index...)" begin
+  @testset "Test permute(cuITensor,Index...)" begin
     CA = randomCuITensor(SType,i,k,j)
     permCA = permute(CA,k,j,i)
     permA = collect(permCA)
@@ -145,24 +145,24 @@ end # End Dense storage test
     for ii ∈ 1:dim(i), jj ∈ 1:dim(j), kk ∈ 1:dim(k)
       A[kk,ii,jj] = digits(SType,ii,jj,kk)
     end
-    CA = CuITensor(A)
+    CA = cuITensor(A)
     CA = permute(CA,i,j,k)
     A = collect(CA)
     for ii ∈ 1:dim(i), jj ∈ 1:dim(j), kk ∈ 1:dim(k)
       @test A[ii,jj,kk]==digits(SType,ii,jj,kk)
     end
   end
-  @testset "Test scalar(CuITensor)" begin
+  @testset "Test scalar(cuITensor)" begin
     x = SType(34)
-    A = CuITensor(x)
+    A = cuITensor(x)
     @test x==scalar(A)
   end
-  @testset "Test norm(CuITensor)" begin
+  @testset "Test norm(cuITensor)" begin
     A = randomCuITensor(SType,i,j,k)
     B = dag(A)*A
     @test norm(A)≈sqrt(scalar(B))
   end
-  @testset "Test add CuITensors" begin
+  @testset "Test add cuITensors" begin
     dA = randomCuITensor(SType,i,j,k)
     dB = randomCuITensor(SType,k,i,j)
     C = collect(dA+dB)
@@ -174,11 +174,11 @@ end # End Dense storage test
     @test Array(permute(C,i,j,k))==Array(permute(A,i,j,k))+Array(permute(B,i,j,k))
   end
 
-  @testset "Test factorizations of a CuITensor" begin
+  @testset "Test factorizations of a cuITensor" begin
 
     A = randomCuITensor(SType,i,j,k,l)
 
-    @testset "Test SVD of a CuITensor" begin
+    @testset "Test SVD of a cuITensor" begin
       U,S,V = svd(A,j,l)
       u = commonindex(U,S)
       v = commonindex(S,V)
@@ -193,7 +193,7 @@ end # End Dense storage test
         ii = Index(4)
         jj = Index(4)
         S = Diagonal(s)
-        T = CuITensor(IndexSet(ii,jj),Dense{Float64, CuVector{Float64}}(vec(CuArray(U*S*V'))))
+        T = cuITensor(vec(CuArray(U*S*V')),IndexSet(ii,jj))
         (U,S,V) = svd(T,ii;maxm=2)
         @test norm(U*S*V-T)≈sqrt(s[3]^2+s[4]^2)
     end 

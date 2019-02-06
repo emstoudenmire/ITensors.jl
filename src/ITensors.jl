@@ -43,7 +43,7 @@ export Dense,
        IndexVal,
        IndexSet,
        ITensor,
-       CuITensor,
+       cuITensor,
        In,
        Out,
        Neither
