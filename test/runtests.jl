@@ -1,7 +1,7 @@
 using ITensors,
       Test
 
-#include("bmark.jl")
+include("bmark.jl")
 include("test_tagset.jl")
 include("test_index.jl")
 include("test_itensor.jl")
