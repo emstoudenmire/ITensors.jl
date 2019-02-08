@@ -43,7 +43,6 @@ export Dense,
        IndexVal,
        IndexSet,
        ITensor,
-       cuITensor,
        In,
        Out,
        Neither
@@ -60,7 +59,6 @@ export prime,
        order,
        dims,
        randomITensor,
-       randomCuITensor,
        id,
        inds,
        scalar,
@@ -114,6 +112,12 @@ export svd,
 
 include("decomp.jl")
 #export truncate!
+using CuArrays
+if CuArrays.configured
+    include("CuITensors.jl")
+    export cuITensor,
+           randomCuITensor
+end
 
 include("mps/siteset.jl")
 export SiteSet,
@@ -127,6 +131,4 @@ export MPS,
        position!,
        overlap,
        randomMPS
-
-
 end # module
