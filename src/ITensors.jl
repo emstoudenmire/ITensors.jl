@@ -112,8 +112,8 @@ export svd,
 
 include("decomp.jl")
 #export truncate!
-using CuArrays
-if CuArrays.configured
+using Pkg
+if "CuArrays" ∈ keys(Pkg.installed())
     include("CuITensors.jl")
     export cuITensor,
            randomCuITensor
