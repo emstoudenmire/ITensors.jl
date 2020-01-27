@@ -1,5 +1,23 @@
 
-## Notes on contraction
+## Roadmap
+
+1. start with setting elements, so
+   we can construct
+2. work on addition next (no combined indices)
+3. work on contraction (no combined indices)
+4. handle combined indices
+
+## General Comments & Ideas
+
+- Define `isfermionic` for QN? How? See below:
+
+- What if a QN has more than one fermionic QNVal,
+  such as:
+  q = QN(("Na",1,-1),("Nb",0,-1))
+  Is it still fermionic? What is the parity and ratio?
+  Maybe yes fermionic, and parity is combined parity.
+
+## Contraction Notes
 
 `compute_contraction_labels` is used to produce labels
 (integer arrays) indicating common and unique indices
