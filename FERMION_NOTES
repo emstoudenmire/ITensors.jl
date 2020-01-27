@@ -34,8 +34,10 @@ Tensor{Float64,2,BlockSparse{Float64,Array{Float64,1},2},IndexSet{2}}
 Tensors/blocksparse/blocksparsetensor.jl (line 556)
 
 Ideas to generalize:
-- the "inds" in the lower level block sparse routines are actually IndexSet,
-  so information about QNs is available; though maybe it's still better
-  to isolate this logic to the ITensor level (not Tensors level)
-- labels can be any type, so perhaps a custom type for fermions
-  and have compute_contraction_labels do the analysis?
+- The "inds" in the lower level block sparse routines are actually IndexSet,
+  so information about QNs is available
+- Create a default function defined by Tensors like `compute_alpha` which
+  computes alpha in: R = alpha*(T1*T2) + beta*R
+  (see line 574 of Tensors/blocksparse/blocksparsetensor.jl)
+  By default this function just returns 1.0, then have the upper ITensor
+  level override this function when the arguments are IndexSet
