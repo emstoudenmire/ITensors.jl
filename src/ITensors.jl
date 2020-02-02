@@ -98,6 +98,7 @@ include("mps/dmrg.jl")
 ###########################################################
 # Physics
 #
+include("physics/fermions.jl")
 include("physics/tag_types.jl")
 include("physics/lattices.jl")
 include("physics/site_types/spinhalf.jl")

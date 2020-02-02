@@ -346,17 +346,24 @@ end
 
 scalar(T::ITensor) = T[]::Number
 
-Base.getindex(T::ITensor{N},vals::Vararg{Int,N}) where {N} = tensor(T)[vals...]::Number
+function Base.getindex(T::ITensor{N},vals::Vararg{Int,N}) where {N} 
+  return tensor(T)[vals...]::Number
+end
 
 # Version accepting CartesianIndex, useful when iterating over
 # CartesianIndices
 Base.getindex(T::ITensor{N},I::CartesianIndex{N}) where {N} = tensor(T)[I]::Number
 
+# permfactor is a factor that can result due to commutation of
+# indices, and is relevant for fermions: see physics/fermions.jl
+permfactor(p,ivs::Vararg{IndexVal,N}) where {N} = 1.0
+
 function Base.getindex(T::ITensor{N},
                        ivs::Vararg{IndexVal,N}) where {N}
   p = getperm(inds(T),ivs)
+  fac = permfactor(p,ivs...)
   vals = permute(val.(ivs),p)
-  return T[vals...]
+  return fac*T[vals...]
 end
 
 # TODO: we should figure out if this is how we want to do
@@ -373,8 +380,9 @@ Base.setindex!(T::ITensor{N},x::Number,vals::Vararg{Int,N}) where {N} = (tensor(
 
 function Base.setindex!(T::ITensor,x::Number,ivs::IndexVal...)
   p = getperm(inds(T),ivs)
+  fac = permfactor(p,ivs...)
   vals = permute(val.(ivs),p)
-  return T[vals...] = x
+  return T[vals...] = (fac*x)
 end
 
 function Base.fill!(T::ITensor,
@@ -720,7 +728,9 @@ function Base.summary(io::IO,
                       T::ITensor)
   print(io,"ITensor ord=$(order(T))")
   for i = 1:order(T)
-    print(io," ",inds(T)[i])
+    if !(typeof(inds(T)[i]) <: QNIndex)
+      print(io," ",inds(T)[i])
+    end
   end
   print(io," \n",typeof(store(T)))
 end

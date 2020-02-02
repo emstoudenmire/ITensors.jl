@@ -1,4 +1,6 @@
-export flux
+export flux,
+       QNIndex,
+       QNIndexVal
 
 const QNBlock = Pair{QN,Int64}
 const QNBlocks = Vector{QNBlock}
@@ -20,6 +22,7 @@ function Tensors.dim(qnblocks::QNBlocks)
 end
 
 const QNIndex = Index{QNBlocks}
+const QNIndexVal = IndexVal{QNIndex}
 
 function have_same_qns(qnblocks::QNBlocks)
   qn1 = qn(qnblocks,1)
@@ -52,6 +55,7 @@ Tensors.nblocks(i::QNIndex) = nblocks(space(i))
 qn(ind::QNIndex,b::Int) = qn(space(ind),b)
 
 Tensors.blockdim(ind::QNIndex,b::Int) = blockdim(space(ind),b)
+
 
 # TODO: generic to IndexSet and BlockDims
 """
