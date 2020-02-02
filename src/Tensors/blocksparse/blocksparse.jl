@@ -105,6 +105,13 @@ function Base.:*(D::BlockSparse,x::Number)
 end
 Base.:*(x::Number,D::BlockSparse) = D*x
 
+function scale!(D::BlockSparse,
+                α::Number)
+  # This is faster than data(D) .*= α
+  rmul!(data(D),α)
+  return D
+end
+
 """
 blockdim(T::BlockSparse,pos::Int)
 
