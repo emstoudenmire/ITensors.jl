@@ -44,8 +44,8 @@ function pm(qv1::QNVal,qv2::QNVal,fac::Int)
     error("QNVals with matching name \"$(name(qv1))\" cannot have different modulus values ")
   end
   m1 = modulus(qv1)
-  if m1 == 1
-    return QNVal(name(qv1),val(qv1)+fac*val(qv2),1)
+  if abs(m1) == 1
+    return QNVal(name(qv1),val(qv1)+fac*val(qv2),m1)
   end
   return QNVal(name(qv1),Base.mod(val(qv1)+fac*val(qv2),abs(m1)),m1)
 end

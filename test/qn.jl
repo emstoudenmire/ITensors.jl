@@ -113,4 +113,9 @@ import ITensors.SmallString
     @test !(qd < qc)
   end
 
+  @testset "Regression: Mod -1" begin
+    r = QN(("N",1,-1))+QN(("N",1,-1))+QN(("N",1,-1))
+    @test r == QN(("N",3,-1))
+  end
+
 end
