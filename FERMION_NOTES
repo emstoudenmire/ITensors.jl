@@ -1,11 +1,13 @@
 
 ## Roadmap
 
+0. isfermionic for QNVal
 1. start with setting elements, so
    we can construct
-2. work on addition next (no combined indices)
-3. work on contraction (no combined indices)
-4. handle combined indices
+2. next permutation of ITensors
+3. work on addition next (no combined indices)
+4. work on contraction (no combined indices)
+5. handle combined indices
 
 ## General Comments & Ideas
 
