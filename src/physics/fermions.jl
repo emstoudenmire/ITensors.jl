@@ -74,6 +74,9 @@ function permfactor(p,ivs::Vararg{QNIndexVal,N}) where {N}
   return parity_sign(oddp[1:n])
 end
 
+# Default implementation for non-QN IndexVals
+permfactor(p,ivs::Vararg{IndexVal,N}) where {N} = 1.0
+
 # May not need this to be part of Tensors
 function Tensors.permfactor(p,block::NTuple{N,Int},inds::IndexSet) where {N}
   ivs = [inds[n](block[n]) for n=1:length(block)]
