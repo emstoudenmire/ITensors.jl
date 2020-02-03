@@ -57,7 +57,7 @@ using ITensors,
     @test I[s(2),s'(2)] ≈ -1.0
   end
 
-  @testset "Add Fermionic ITensors" begin
+  @testset "Permute Fermionic ITensors" begin
     s = Index([QN("Nf",0,-1)=>1,QN("Nf",1,-1)=>1],"sn")
 
     N1 = ITensor(QN("Nf",0,-1),s',dag(s))
@@ -65,10 +65,30 @@ using ITensors,
 
     N2 = ITensor(QN("Nf",0,-1),dag(s),s')
     N2[s'(2),s(2)] = 1.0
-    @show N2
 
-    NN = N1+N2
-    @test NN[s'(2),s(2)] ≈ 2.0
+    pN1 = permute(N1,dag(s),s')
+    @test pN1[s'(2),s(2)] ≈ 1.0
+
+    pN2 = permute(N2,s',dag(s))
+    @test pN2[s'(2),s(2)] ≈ 1.0
+  end
+
+  @testset "Add Fermionic ITensors" begin
+    s = Index([QN("Nf",0,-1)=>1,QN("Nf",1,-1)=>1],"sn")
+
+    #N1 = ITensor(QN("Nf",0,-1),s',dag(s))
+    #N1[s'(2),s(2)] = 1.0
+    #@show N1
+
+    #N2 = ITensor(QN("Nf",0,-1),dag(s),s')
+    #N2[s'(2),s(2)] = 1.0
+    #@show N2
+
+    #println()
+
+    #NN = N1+N2
+    #@show NN
+    #@test NN[s'(2),s(2)] ≈ 2.0
 
     #NN = N1+N1
     #@test NN[s'(2),s(2)] ≈ 2.0
