@@ -32,7 +32,7 @@ isfermionic(qv::QNVal) = (modulus(qv) < 0)
 #  end
 #  return false
 #end
-#
+ 
 #isfermionic(iv::IndexVal) = isfermionic(qn(ind(iv),val(iv)))
 
 """
