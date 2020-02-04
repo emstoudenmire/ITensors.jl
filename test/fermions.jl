@@ -28,9 +28,9 @@ using ITensors,
   end
 
   @testset "Get and Set Elements" begin
-    s = Index([QN("Nf",0,-1)=>1,QN("Nf",1,-1)=>1],"sn")
+    s = Index([QN("Nf",0,-1)=>1,QN("Nf",1,-1)=>1],"s")
 
-    N = ITensor(QN("Nf",0,-1),s',dag(s))
+    N = ITensor(s',dag(s))
 
     N[s'(2),s(2)] = 1.0
     @test N[s'(2),s(2)] ≈ +1.0
@@ -40,14 +40,14 @@ using ITensors,
     @test N[s'(2),s(2)] ≈ -1.0
     @test N[s(2),s'(2)] ≈ 1.0
 
-    C = ITensor(QN("Nf",-1,-1),s',dag(s))
+    C = ITensor(s',dag(s))
 
     C[s'(1),s(2)] = 1.0
     @test C[s'(1),s(2)] ≈ 1.0
     @test C[s(2),s'(1)] ≈ 1.0
 
 
-    I = ITensor(QN("Nf",0,-1),s',dag(s))
+    I = ITensor(s',dag(s))
     I[s'(1),s(1)] = 1.0
     I[s'(2),s(2)] = 1.0
     @test I[s'(1),s(1)] ≈ 1.0
@@ -58,17 +58,17 @@ using ITensors,
   end
 
   @testset "Permute Fermionic ITensors" begin
-    s = Index([QN("Nf",0,-1)=>1,QN("Nf",1,-1)=>1],"sn")
+    s = Index([QN("Nf",0,-1)=>1,QN("Nf",1,-1)=>1],"s")
 
     #
     # Operator tests
     # 
 
-    N1 = ITensor(QN("Nf",0,-1),s',dag(s))
+    N1 = ITensor(s',dag(s))
     N1[s'(2),s(2)] = 1.0
     #@show N1
 
-    N2 = ITensor(QN("Nf",0,-1),dag(s),s')
+    N2 = ITensor(dag(s),s')
     N2[s'(2),s(2)] = 1.0
     #@show N2
 
@@ -84,10 +84,10 @@ using ITensors,
   @testset "Add Fermionic ITensors" begin
     s = Index([QN("Nf",0,-1)=>1,QN("Nf",1,-1)=>1],"sn")
 
-    N1 = ITensor(QN("Nf",0,-1),s',dag(s))
+    N1 = ITensor(s',dag(s))
     N1[s'(2),s(2)] = 1.0
 
-    N2 = ITensor(QN("Nf",0,-1),dag(s),s')
+    N2 = ITensor(dag(s),s')
     N2[s'(2),s(2)] = 1.0
 
     NN = N1+N2
