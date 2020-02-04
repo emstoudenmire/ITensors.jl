@@ -55,3 +55,30 @@ function flux(T::ITensor)
   return flux(T,block1)
 end
 
+function Base.getindex(T::ITensor{N},
+                       ivs::Vararg{QNIndexVal,N}) where {N}
+  p = getperm(inds(T),ivs)
+  fac = permfactor(p,ivs...) #possible fermion sign
+  vals = permute(val.(ivs),p)
+  return fac*T[vals...]
+end
+
+function Base.setindex!(T::ITensor,x::Number,ivs::QNIndexVal...)
+  p = getperm(inds(T),ivs)
+  vals = permute(val.(ivs),p)
+
+  # Check flux is consistent
+  if nnzblocks(T) != 0
+    bind,block = Tensors.blockindex(tensor(T),vals...)
+    fb = flux(T,block)
+    fT = flux(T)
+    if fb != fT
+      error("Flux $fb of block in setindex! not consistent with flux $fT of ITensor")
+    end
+  end
+
+  # Compute possible fermion sign
+  fac = permfactor(p,ivs...)
+
+  return T[vals...] = (fac*x)
+end

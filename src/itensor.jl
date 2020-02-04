@@ -357,9 +357,8 @@ Base.getindex(T::ITensor{N},I::CartesianIndex{N}) where {N} = tensor(T)[I]::Numb
 function Base.getindex(T::ITensor{N},
                        ivs::Vararg{IndexVal,N}) where {N}
   p = getperm(inds(T),ivs)
-  fac = permfactor(p,ivs...) #possible fermion sign
   vals = permute(val.(ivs),p)
-  return fac*T[vals...]
+  return T[vals...]
 end
 
 # TODO: we should figure out if this is how we want to do
@@ -376,9 +375,8 @@ Base.setindex!(T::ITensor{N},x::Number,vals::Vararg{Int,N}) where {N} = (tensor(
 
 function Base.setindex!(T::ITensor,x::Number,ivs::IndexVal...)
   p = getperm(inds(T),ivs)
-  fac = permfactor(p,ivs...) #possible fermion sign
   vals = permute(val.(ivs),p)
-  return T[vals...] = (fac*x)
+  return T[vals...] = x
 end
 
 function Base.fill!(T::ITensor,
