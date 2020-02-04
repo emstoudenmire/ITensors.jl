@@ -1,17 +1,7 @@
-<<<<<<< HEAD
-export flux,
-       QNIndex,
-       QNIndexVal
-=======
-<<<<<<< Updated upstream
-export flux
-=======
 export flux,
        QNIndex,
        QNIndexVal,
        qn
->>>>>>> Stashed changes
->>>>>>> master
 
 const QNBlock = Pair{QN,Int64}
 const QNBlocks = Vector{QNBlock}
