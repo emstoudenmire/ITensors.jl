@@ -77,14 +77,13 @@ end
 # Default implementation for non-QN IndexVals
 permfactor(p,ivs::Vararg{IndexVal,N}) where {N} = 1.0
 
-# May not need this to be part of Tensors
 function Tensors.permfactor(p,block::NTuple{N,Int},inds::IndexSet) where {N}
   ivs = [inds[n](block[n]) for n=1:length(block)]
   return permfactor(p,ivs...)
 end
 
-function Tensors.scale_by_permfactor!(B,perm,block::NTuple{N,Int},inds::IndexSet) where {N}
-  fac = Tensors.permfactor(perm,block,inds)
-  scale!(B,fac)
-end
+#function Tensors.scale_by_permfactor!(B,perm,block::NTuple{N,Int},inds::IndexSet) where {N}
+#  fac = Tensors.permfactor(perm,block,inds)
+#  scale!(B,fac)
+#end
 

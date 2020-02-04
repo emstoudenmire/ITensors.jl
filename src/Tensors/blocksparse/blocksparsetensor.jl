@@ -394,10 +394,10 @@ end
 # May not need this to be part of Tensors
 permfactor(p,block::NTuple{N,Int},inds) where {N} = 1.0
 
-function scale_by_permfactor!(B,perm,block::NTuple{N,Int},inds) where {N}
-  # intentionally left blank
-  # can be overridden for special inds types by calling library
-end
+#function scale_by_permfactor!(B,perm,block::NTuple{N,Int},inds) where {N}
+#  # intentionally left blank
+#  # can be overridden for special inds types by calling library
+#end
 
 function Base.permutedims!(R::BlockSparseTensor{<:Number,N},
                            T::BlockSparseTensor{<:Number,N},
@@ -407,8 +407,11 @@ function Base.permutedims!(R::BlockSparseTensor{<:Number,N},
     # Loop over non-zero blocks of T/R
     Tblock = blockview(T,blockT)
     Rblock = blockview(R,permute(blockT,perm))
-    permutedims!(Rblock,Tblock,perm,f)
-    scale_by_permfactor!(Rblock,perm,blockT,inds(R))
+
+    pfac = permfactor(perm,blockT,inds(R))
+    fac_f = (r,t)->f(r,pfac*t)
+
+    permutedims!(Rblock,Tblock,perm,fac_f)
   end
   return R
 end
