@@ -91,7 +91,7 @@ using ITensors,
     N2[s'(2),s(2)] = 1.0
 
     NN = N1+N2
-    @show NN
+    #@show NN
     @test NN[s'(2),s(2)] ≈ 2.0
 
     NN = N1+N1
