@@ -37,8 +37,9 @@ isfermionic(qv::QNVal) = (modulus(qv) < 0)
 
 """
     fparity(qn::QN)
+    fparity(qn::IndexVal)
 
-Compute the fermion parity (0 or 1) of a QN, 
+Compute the fermion parity (0 or 1) of a QN of IndexVal,
 defined as the sum mod 2 of each of its fermionic 
 QNVals (QNVals with negative modulus).
 """
@@ -52,21 +53,21 @@ function fparity(qn::QN)
   return mod(p,2)
 end
 
-fparity(iv::IndexVal) = fparity(qn(ind(iv),val(iv)))
+fparity(iv::IndexVal) = fparity(qn(iv))
 
 """
-    permfactor(p,ivs::Vararg{QNIndexVal,N})
+    compute_permfactor(p,iv_or_qn::Vararg{T,N})
 
-Given a permutation p and a set of QNIndexVals,
+Given a permutation p and a set "s" of QNIndexVals or QNs,
 if the subset of index vals which are fermion-parity
 odd undergo an odd permutation (odd number of swaps)
 according to p, then return -1. Otherwise return +1.
 """
-function permfactor(p,ivs::Vararg{QNIndexVal,N}) where {N}
+function compute_permfactor(p,iv_or_qn::Vararg{T,N}) where {T,N}
   oddp = @MVector zeros(Int,N)
   n = 0
   for j=1:N
-    if fparity(ivs[p[j]]) == 1
+    if fparity(iv_or_qn[p[j]]) == 1
       n += 1
       oddp[n] = p[j]
     end
@@ -77,9 +78,11 @@ end
 # Default implementation for non-QN IndexVals
 permfactor(p,ivs::Vararg{IndexVal,N}) where {N} = 1.0
 
+permfactor(p,ivs::Vararg{QNIndexVal,N}) where {N} = compute_permfactor(p,ivs...)
+
 function Tensors.permfactor(p,block::NTuple{N,Int},inds::IndexSet) where {N}
-  ivs = [inds[n](block[n]) for n=1:length(block)]
-  return permfactor(p,ivs...)
+  qns = ntuple(n->qn(inds[n],block[n]),N)
+  return compute_permfactor(p,qns...)
 end
 
 #function Tensors.scale_by_permfactor!(B,perm,block::NTuple{N,Int},inds::IndexSet) where {N}
