@@ -595,8 +595,15 @@ function contract!(R::BlockSparseTensor{<:Number,NR},
                    contraction_plan) where {N1,N2,NR}
   already_written_to = fill(false,nnzblocks(R))
   # In R .= α .* (T1 * T2) .+ β .* R
-  α = 1
   for (pos1,pos2,posR) in contraction_plan
+    #
+    # Idea for determining alpha:
+    #  - for T1, compute perm to order indices like: {u1,u2,c3,c2,c1}
+    #  - for T2, order like {c1,c2,c3,u3,u4,u5}
+    # where kn is nth contracted and cn is nth uncontracted
+    # Then alpha is product of each perm factor
+    #
+    α = 1
     blockT1 = blockview(T1,pos1)
     blockT2 = blockview(T2,pos2)
     blockR = blockview(R,posR)
