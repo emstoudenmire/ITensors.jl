@@ -420,6 +420,7 @@ function Base.permutedims!(R::BlockSparseTensor{<:Number,N},
     Rblock = blockview(R,permute(blockT,perm))
 
     pfac = permfactor(perm,blockT,inds(R))
+    #@show pfac
     fac_f = (r,t)->f(r,pfac*t)
 
     permutedims!(Rblock,Tblock,perm,fac_f)
@@ -586,6 +587,8 @@ function contract(T1::BlockSparseTensor{<:Any,N1},
   return R
 end
 
+compute_alpha(labelsR,indsR,labelsT1,indsT1,labelsT2,indsT2)::Float64 = 1.0
+
 function contract!(R::BlockSparseTensor{<:Number,NR},
                    labelsR,
                    T1::BlockSparseTensor{<:Number,N1},
@@ -596,14 +599,11 @@ function contract!(R::BlockSparseTensor{<:Number,NR},
   already_written_to = fill(false,nnzblocks(R))
   # In R .= α .* (T1 * T2) .+ β .* R
   for (pos1,pos2,posR) in contraction_plan
-    #
-    # Idea for determining alpha:
-    #  - for T1, compute perm to order indices like: {u1,u2,c3,c2,c1}
-    #  - for T2, order like {c1,c2,c3,u3,u4,u5}
-    # where kn is nth contracted and cn is nth uncontracted
-    # Then alpha is product of each perm factor
-    #
-    α = 1
+    @show (pos1,pos2,posR)
+    bT1 = block(blockoffsets(T1)[pos1])
+    bT2 = block(blockoffsets(T2)[pos2])
+    bR = block(blockoffsets(R)[posR])
+    α = compute_alpha(labelsR,bR,inds(R),labelsT1,bT1,inds(T1),labelsT2,bT2,inds(T2))
     blockT1 = blockview(T1,pos1)
     blockT2 = blockview(T2,pos2)
     blockR = blockview(R,posR)
