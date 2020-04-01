@@ -1,5 +1,6 @@
 export BlockSparseTensor,
-       blockview
+       blockview,
+       addblock!
 
 #
 # BlockSparseTensor (Tensor using BlockSparse storage)
@@ -7,65 +8,23 @@ export BlockSparseTensor,
 
 const BlockSparseTensor{ElT,N,StoreT,IndsT} = Tensor{ElT,N,StoreT,IndsT} where {StoreT<:BlockSparse}
 
-blockoffsets(T::BlockSparseTensor) = blockoffsets(store(T))
-nnzblocks(T::BlockSparseTensor) = nnzblocks(store(T))
-nnz(T::BlockSparseTensor) = nnz(store(T))
-
-nblocks(T::BlockSparseTensor) = nblocks(inds(T))
-blockdims(T::BlockSparseTensor{ElT,N},
-          block::Block{N}) where {ElT,N} = blockdims(inds(T),block)
-blockdim(T::BlockSparseTensor{ElT,N},
-         block::Block{N}) where {ElT,N} = blockdim(inds(T),block)
-
-"""
-offset(T::BlockSparseTensor,
-       block::Block)
-
-Get the linear offset in the data storage for the specified block.
-If the specified block is not non-zero structurally, return nothing.
-"""
-function offset(T::BlockSparseTensor{ElT,N},
-                block::Block{N}) where {ElT,N}
-  return offset(blockoffsets(T),block)
+# Special version for BlockSparseTensor
+# Generic version doesn't work since BlockSparse us parametrized by
+# the Tensor order
+function StaticArrays.similar_type(::Type{<:Tensor{ElT,NT,<:BlockSparse{ElT,VecT},<:Any}},::Type{IndsR}) where {NT,ElT,VecT,IndsR}
+  NR = ndims(IndsR)
+  return Tensor{ElT,NR,BlockSparse{ElT,VecT,NR},IndsR}
 end
-
-"""
-offset(T::BlockSparseTensor,pos::Int)
-
-Get the offset of the block at position pos
-in the block-offsets list.
-"""
-offset(T::BlockSparseTensor,n::Int) = offset(store(T),n)
-
-"""
-blockdim(T::BlockSparseTensor,pos::Int)
-
-Get the block dimension of the block at position pos
-in the block-offset list.
-"""
-blockdim(T::BlockSparseTensor,pos::Int) = blockdim(store(T),pos)
-
-findblock(T::BlockSparseTensor{ElT,N},
-          block::Block{N}) where {ElT,N} = findblock(store(T),block)
 
 new_block_pos(T::BlockSparseTensor{ElT,N},
               block::Block{N}) where {ElT,N} = new_block_pos(blockoffsets(T),block)
 
-"""
-isblocknz(T::BlockSparseTensor,
-          block::Block)
-
-Check if the specified block is non-zero
-"""
-isblocknz(T::BlockSparseTensor{ElT,N},
-          block::Block{N}) where {ElT,N} = isblocknz(store(T),block)
-
 function BlockSparseTensor(::Type{ElT},
                            ::UndefInitializer,
-                           blockoffsets::BlockOffsets{N},
+                           boffs::BlockOffsets{N},
                            inds) where {ElT<:Number,N}
-  nnz_tot = nnz(blockoffsets,inds)
-  storage = BlockSparse(ElT,undef,blockoffsets,nnz_tot)
+  nnz_tot = nnz(boffs,inds)
+  storage = BlockSparse(ElT,undef,boffs,nnz_tot)
   return Tensor(storage,inds)
 end
 
@@ -83,10 +42,11 @@ function BlockSparseTensor(::Type{ElT},
   return Tensor(storage,inds)
 end
 
-function BlockSparseTensor(blockoffsets::BlockOffsets{N},
-                           inds) where {N}
+function BlockSparseTensor(blockoffsets::BlockOffsets,
+                           inds)
   return BlockSparseTensor(Float64,blockoffsets,inds)
 end
+
 
 """
 BlockSparseTensor(::UndefInitializer,
@@ -96,19 +56,24 @@ BlockSparseTensor(::UndefInitializer,
 Construct a block sparse tensor with uninitialized memory
 from indices and locations of non-zero blocks.
 """
-function BlockSparseTensor(::UndefInitializer,
-                           blocks::Vector{Block{N}},
-                           inds) where {N}
-  blockoffsets,nnz = get_blockoffsets(blocks,inds)
-  storage = BlockSparse(undef,blockoffsets,nnz)
+BlockSparseTensor(::UndefInitializer,
+                  blocks::Blocks,
+                  inds) = BlockSparseTensor(Float64,undef,blocks,inds)
+
+function BlockSparseTensor(::Type{ElT},
+                           ::UndefInitializer,
+                           blocks::Blocks,
+                           inds) where {ElT}
+  boffs,nnz = blockoffsets(blocks,inds)
+  storage = BlockSparse(ElT,undef,boffs,nnz)
   return Tensor(storage,inds)
 end
 
-function BlockSparseTensor(::UndefInitializer,
-                           blocks::Vector{Block{N}},
-                           inds::Vararg{DimT,N}) where {DimT,N}
-  return BlockSparseTensor(undef,blocks,inds)
-end
+#function BlockSparseTensor(::UndefInitializer,
+#                           blocks::Blocks{N},
+#                           inds::Vararg{DimT,N}) where {DimT,N}
+#  return BlockSparseTensor(undef,blocks,inds)
+#end
 
 """
 BlockSparseTensor(inds)
@@ -117,6 +82,11 @@ Construct a block sparse tensor with no blocks.
 """
 function BlockSparseTensor(inds)
   return BlockSparseTensor(BlockOffsets{length(inds)}(),inds)
+end
+
+function BlockSparseTensor(::Type{ElT},
+                           inds) where {ElT<:Number,N}
+  return BlockSparseTensor(ElT,BlockOffsets{length(inds)}(),inds)
 end
 
 """
@@ -135,33 +105,33 @@ BlockSparseTensor(blocks::Vector{Block{N}},
 Construct a block sparse tensor with the specified blocks.
 Defaults to setting structurally non-zero blocks to zero.
 """
-BlockSparseTensor(blocks::Vector{Block{N}},
-                  inds) where {N} = BlockSparseTensor(Float64,blocks,inds)
+BlockSparseTensor(blocks::Blocks,
+                  inds) = BlockSparseTensor(Float64,blocks,inds)
 
 function BlockSparseTensor(::Type{ElT},
-                           blocks::Vector{Block{N}},
-                           inds) where {ElT,N}
-  blockoffsets,offset_total = get_blockoffsets(blocks,inds)
-  storage = BlockSparse(ElT,blockoffsets,offset_total)
+                           blocks::Blocks,
+                           inds) where {ElT}
+  boffs,nnz = blockoffsets(blocks,inds)
+  storage = BlockSparse(ElT,boffs,nnz)
   return Tensor(storage,inds)
 end
 
 #function BlockSparseTensor(blocks::Vector{Block{N}},
 #                           inds) where {N}
-#  blockoffsets,offset_total = get_blockoffsets(blocks,inds)
-#  storage = BlockSparse(blockoffsets,offset_total)
+#  blockoffsets,nnz = blockoffsets(blocks,inds)
+#  storage = BlockSparse(blockoffsets,nnz)
 #  return Tensor(storage,inds)
 #end
 
 """
 BlockSparseTensor(blocks::Vector{Block{N}},
-                  inds...)
+                  inds::BlockDims...)
 
 Construct a block sparse tensor with the specified blocks.
 Defaults to setting structurally non-zero blocks to zero.
 """
-function BlockSparseTensor(blocks::Vector{Block{N}},
-                           inds::Vararg{DimT,N}) where {DimT,N}
+function BlockSparseTensor(blocks::Blocks{N},
+                           inds::Vararg{BlockDim,N}) where {DimT,N}
   return BlockSparseTensor(blocks,inds)
 end
 
@@ -177,58 +147,26 @@ function Base.similar(::Type{<:BlockSparseTensor{ElT,N}},
   return BlockSparseTensor(ElT,undef,blockoffsets,inds)
 end
 
+function Base.zeros(::BlockSparseTensor{ElT,N},
+                    blockoffsets::BlockOffsets{N},
+                    inds) where {ElT,N}
+  return BlockSparseTensor(ElT,blockoffsets,inds)
+end
+
+function Base.zeros(::Type{<:BlockSparseTensor{ElT,N}},
+                    blockoffsets::BlockOffsets{N},
+                    inds) where {ElT,N}
+  return BlockSparseTensor(ElT,blockoffsets,inds)
+end
+
 # Basic functionality for AbstractArray interface
 Base.IndexStyle(::Type{<:BlockSparseTensor}) = IndexCartesian()
-
-# Given a CartesianIndex in the range dims(T), get the block it is in
-# and the index within that block
-function blockindex(T::BlockSparseTensor{ElT,N},
-                    i::Vararg{Int,N}) where {ElT,N}
-  # Start in the (1,1,...,1) block
-  current_block_loc = @MVector ones(Int,N)
-  current_block_dims = blockdims(T,Tuple(current_block_loc))
-  block_index = MVector(i)
-  for dim in 1:N
-    while block_index[dim] > current_block_dims[dim]
-      block_index[dim] -= current_block_dims[dim]
-      current_block_loc[dim] += 1
-      current_block_dims = blockdims(T,Tuple(current_block_loc))
-    end
-  end
-  return Block{N}(block_index),Tuple(current_block_loc)
-end
-
-# Get the starting index of the block
-function blockstart(T::BlockSparseTensor{ElT,N},
-                    block::Block{N}) where {ElT,N}
-  start_index = @MVector ones(Int,N)
-  for j in 1:N
-    ind_j = ind(T,j)
-    for block_j in 1:block[j]-1
-      start_index[j] += blockdim(ind_j,block_j)
-    end
-  end
-  return CartesianIndex(Tuple(start_index))
-end
-
-# Get the ending index of the block
-function blockend(T::BlockSparseTensor{ElT,N},
-                  block) where {ElT,N}
-  end_index = @MVector zeros(Int,N)
-  for j in 1:N
-    ind_j = ind(T,j)
-    for block_j in 1:block[j]
-      end_index[j] += blockdim(ind_j,block_j)
-    end
-  end
-  return CartesianIndex(Tuple(end_index))
-end
 
 # Get the CartesianIndices for the range of indices
 # of the specified
 function blockindices(T::BlockSparseTensor{ElT,N},
                       block) where {ElT,N}
-  return blockstart(T,block):blockend(T,block)
+  return CartesianIndex(blockstart(T,block)):CartesianIndex(blockend(T,block))
 end
 
 """
@@ -262,6 +200,10 @@ Base.@propagate_inbounds function Base.getindex(T::BlockSparseTensor{ElT,N},
   return store(T)[offset]
 end
 
+Base.@propagate_inbounds function Base.getindex(T::BlockSparseTensor{ElT,0}) where {ElT}
+  return store(T)[]
+end
+
 # These may not be valid if the Tensor has no blocks
 #Base.@propagate_inbounds Base.getindex(T::BlockSparseTensor{<:Number,1},ind::Int) = store(T)[ind]
 
@@ -275,11 +217,14 @@ function addblock!(T::BlockSparseTensor{ElT,N},
   newdim = blockdim(T,newblock)
   newpos = new_block_pos(T,newblock)
   newoffset = 0
-  if nnzblocks(T)>0
+  if newpos!=1
     newoffset = offset(T,newpos-1)+blockdim(T,newpos-1)
   end
+  # Insert new block into blockoffsets list
   insert!(blockoffsets(T),newpos,BlockOffset{N}(newblock,newoffset))
+  # Insert new block into data
   splice!(data(store(T)),newoffset+1:newoffset,zeros(ElT,newdim))
+  # Shift the offsets of the block after the inserted one
   for i in newpos+1:nnzblocks(T)
     block_i,offset_i = blockoffsets(T)[i]
     blockoffsets(T)[i] = BlockOffset{N}(block_i,offset_i+newdim)
@@ -301,18 +246,6 @@ Base.@propagate_inbounds function Base.setindex!(T::BlockSparseTensor{ElT,N},
 end
 
 """
-blockview(T::BlockSparseTensor,block::Block)
-
-Given a specified block, return a Dense Tensor that is a view to the data
-in that block
-"""
-function blockview(T::BlockSparseTensor{ElT,N},
-                   block::Block{N}) where {ElT,N}
-  pos = findblock(T,block)
-  return blockview(T,pos)
-end
-
-"""
 blockview(T::BlockSparseTensor,pos::Int)
 
 Given a specified position in the block-offset list, return a Dense Tensor 
@@ -321,11 +254,18 @@ is known already).
 """
 function blockview(T::BlockSparseTensor,
                    pos::Union{Int,Nothing})
+  # TODO: don't allow nothing input
   isnothing(pos) && error("Block must be structurally non-zero to get a view")
-  blockoffsetT = offset(T,pos)
-  blockT = block(blockoffsets(T)[pos])
+  blockT,offsetT = blockoffsets(T)[pos]
+  return blockview(T,BlockOffset(blockT,offsetT))
+end
+
+function blockview(T::BlockSparseTensor,
+                   bof::BlockOffset)
+  blockT,offsetT = bof
   blockdimsT = blockdims(T,blockT)
-  dataTslice = @view data(store(T))[blockoffsetT+1:blockoffsetT+prod(blockdimsT)]
+  blockdimT = prod(blockdimsT)
+  dataTslice = @view data(store(T))[offsetT+1:offsetT+blockdimT]
   return Tensor(Dense(dataTslice),blockdimsT)
 end
 
@@ -366,9 +306,297 @@ end
 
 function Base.permutedims(T::BlockSparseTensor{<:Number,N},
                           perm::NTuple{N,Int}) where {N}
-  blockoffsetsR,indsR = permute(blockoffsets(T),inds(T),perm)
+  blockoffsetsR,indsR = permutedims(blockoffsets(T),inds(T),perm)
   R = similar(T,blockoffsetsR,indsR)
   permutedims!(R,T,perm)
+  return R
+end
+
+function _permute_combdims(combdims::NTuple{NC,Int},
+                           perm::NTuple{NP,Int}) where {NC,NP}
+  res = MVector{NC,Int}(undef)
+  iperm = invperm(perm)
+  for i in 1:NC
+    res[i] = iperm[combdims[i]]
+  end
+  return Tuple(res)
+end
+
+#
+# These are functions to help with combining and uncombining
+#
+
+# Note that combdims is expected to be contiguous and ordered
+# smallest to largest
+function combine_dims(blocks::Blocks{N},
+                      inds,
+                      combdims::NTuple{NC,Int}) where {N,NC}
+  nblcks = nblocks(inds,combdims)
+  blocks_comb = Blocks{N-NC+1}(undef,nnzblocks(blocks))
+  for (i,block) in enumerate(blocks)
+    blocks_comb[i] = combine_dims(block,inds,combdims)
+  end
+  return blocks_comb
+end
+
+function combine_dims(block::Block,
+                      inds,
+                      combdims::NTuple{NC,Int}) where {NC}
+  nblcks = nblocks(inds,combdims)
+  slice = getindices(block,combdims)
+  slice_comb = LinearIndices(nblcks)[slice...]
+  block_comb = deleteat(block,combdims)
+  block_comb = insertafter(block_comb,tuple(slice_comb),minimum(combdims)-1)
+  return block_comb
+end
+
+# In the dimension dim, permute the blocks
+function perm_blocks(blocks::Blocks{N},
+                     dim::Int,
+                     perm) where {N}
+  blocks_perm = Blocks{N}(undef,nnzblocks(blocks))
+  iperm = invperm(perm)
+  for (i,block) in enumerate(blocks)
+    blocks_perm[i] = setindex(block,iperm[block[dim]],dim)
+  end
+  return blocks_perm
+end
+
+# In the dimension dim, permute the block
+function perm_block(block::Block,
+                    dim::Int,
+                    perm) where {N}
+  iperm = invperm(perm)
+  return setindex(block,iperm[block[dim]],dim)
+end
+
+# In the dimension dim, combine the specified blocks
+function combine_blocks(blocks::Blocks,
+                        dim::Int,
+                        blockcomb::Vector{Int})
+  blocks_comb = copy(blocks)
+  nnz_comb = nnzblocks(blocks)
+  for (i,block) in enumerate(blocks)
+    dimval = block[dim]
+    blocks_comb[i] = setindex(block,blockcomb[dimval],dim)
+  end
+  unique!(blocks_comb)
+  return blocks_comb
+end
+
+function permutedims_combine_output(T::BlockSparseTensor{ElT,N},
+                                    is,
+                                    perm::NTuple{N,Int},
+                                    combdims::NTuple{NC,Int},
+                                    blockperm::Vector{Int},
+                                    blockcomb::Vector{Int}) where {ElT,N,NC}
+  # Permute the indices
+  indsT = inds(T)
+  inds_perm = permute(indsT,perm)
+
+  # Now that the indices are permuted, compute
+  # which indices are now combined
+  combdims_perm = sort(_permute_combdims(combdims,perm))
+
+  # Permute the nonzero blocks (dimension-wise)
+  blocks = nzblocks(T)
+  blocks_perm = permutedims(blocks,perm)
+
+  # Combine the nonzero blocks (dimension-wise)
+  blocks_perm_comb = combine_dims(blocks_perm,inds_perm,combdims_perm)
+
+  # Permute the blocks (within the newly combined dimension)
+  comb_ind_loc = minimum(combdims_perm)
+  blocks_perm_comb = perm_blocks(blocks_perm_comb,comb_ind_loc,blockperm)
+  blocks_perm_comb = sort(blocks_perm_comb;lt=isblockless)
+
+  # Combine the blocks (within the newly combined and permuted dimension)
+  blocks_perm_comb = combine_blocks(blocks_perm_comb,comb_ind_loc,blockcomb)
+
+  return BlockSparseTensor(blocks_perm_comb,is)
+end
+
+function permutedims_combine(T::BlockSparseTensor{ElT,N},
+                             is,
+                             perm::NTuple{N,Int},
+                             combdims::NTuple{NC,Int},
+                             blockperm::Vector{Int},
+                             blockcomb::Vector{Int}) where {ElT,N,NC}
+
+  R = permutedims_combine_output(T,is,perm,combdims,blockperm,blockcomb)
+
+  # Permute the indices
+  inds_perm = permute(inds(T),perm)
+
+  # Now that the indices are permuted, compute
+  # which indices are now combined
+  combdims_perm = sort(_permute_combdims(combdims,perm))
+  comb_ind_loc = minimum(combdims_perm)
+
+  # Determine the new index before combining
+  inds_to_combine = getindices(inds_perm,combdims_perm)
+  ind_comb = ⊗(inds_to_combine...)
+  ind_comb = permuteblocks(ind_comb,blockperm)
+
+  for bof in blockoffsets(T)
+    Tb = blockview(T,bof)
+    b = block(bof)
+    b_perm = permute(b,perm)
+    b_perm_comb = combine_dims(b_perm,inds_perm,combdims_perm)
+    b_perm_comb = perm_block(b_perm_comb,comb_ind_loc,blockperm)
+    b_in_combined_dim = b_perm_comb[comb_ind_loc]
+    new_b_in_combined_dim = blockcomb[b_in_combined_dim]
+    offset = 0
+    pos_in_new_combined_block = 1
+    while b_in_combined_dim-pos_in_new_combined_block > 0 && 
+            blockcomb[b_in_combined_dim-pos_in_new_combined_block] == new_b_in_combined_dim
+      offset += blockdim(ind_comb,b_in_combined_dim-pos_in_new_combined_block)
+      pos_in_new_combined_block += 1
+    end
+    b_new = setindex(b_perm_comb,new_b_in_combined_dim,comb_ind_loc)
+
+    Rb_total = blockview(R,b_new)
+    dimsRb_tot = dims(Rb_total)
+    subind = ntuple(i->i==comb_ind_loc ? range(1+offset,stop=offset+blockdim(ind_comb,b_in_combined_dim)) : range(1,stop=dimsRb_tot[i]),N-NC+1)
+    Rb = @view array(Rb_total)[subind...]
+    #Rb = reshape(Rb,permute(dims(Tb),perm))
+    #permutedims!(Rb,Tb,perm)
+    Tb_perm = permutedims(Tb,perm)
+    copyto!(Rb,Tb_perm)
+  end
+
+  return R
+end
+
+# TODO: optimize by avoiding findfirst
+function _number_uncombined(blockval::Int,
+                            blockcomb::Vector{Int})
+  if blockval == blockcomb[end]
+    return length(blockcomb)-findfirst(==(blockval),blockcomb)+1
+  end
+  return findfirst(==(blockval+1),blockcomb)-findfirst(==(blockval),blockcomb)
+end
+
+# TODO: optimize by avoiding findfirst
+function _number_uncombined_shift(blockval::Int,
+                                  blockcomb::Vector{Int})
+  if blockval == 1
+    return 0
+  end
+  ncomb_shift = 0
+  for i = 1:blockval-1
+    ncomb_shift += findfirst(==(i+1),blockcomb) - findfirst(==(i),blockcomb) - 1
+  end
+  return ncomb_shift
+end
+
+# Uncombine the blocks along the dimension dim
+# according to the pattern in blockcomb (for example, blockcomb
+# is [1,2,2,3] and dim = 2, so the blocks (1,2),(2,3) get
+# split into (1,2),(1,3),(2,4))
+function uncombine_blocks(blocks::Blocks{N},
+                          dim::Int,
+                          blockcomb::Vector{Int}) where {N}
+  blocks_uncomb = Blocks{N}()
+  ncomb_tot = 0
+  for i in 1:length(blocks)
+    block = blocks[i]
+    blockval = block[dim]
+    ncomb = _number_uncombined(blockval,blockcomb)
+    ncomb_shift = _number_uncombined_shift(blockval,blockcomb)
+    push!(blocks_uncomb,setindex(block,blockval+ncomb_shift,dim))
+    for j in 1:ncomb-1
+      push!(blocks_uncomb,setindex(block,blockval+ncomb_shift+j,dim))
+    end
+  end
+  return blocks_uncomb
+end
+
+function uncombine_block(block::Block{N},
+                         dim::Int,
+                         blockcomb::Vector{Int}) where {N}
+  blocks_uncomb = Blocks{N}()
+  ncomb_tot = 0
+  blockval = block[dim]
+  ncomb = _number_uncombined(blockval,blockcomb)
+  ncomb_shift = _number_uncombined_shift(blockval,blockcomb)
+  push!(blocks_uncomb,setindex(block,blockval+ncomb_shift,dim))
+  for j in 1:ncomb-1
+    push!(blocks_uncomb,setindex(block,blockval+ncomb_shift+j,dim))
+  end
+  return blocks_uncomb
+end
+
+function uncombine_output(T::BlockSparseTensor{ElT,N},
+                          is,
+                          combdim::Int,
+                          blockperm::Vector{Int},
+                          blockcomb::Vector{Int}) where {ElT<:Number,N}
+  ind_uncomb_perm = ⊗(setdiff(is,inds(T))...)
+  inds_uncomb_perm = insertat(inds(T),ind_uncomb_perm,combdim)
+  # Uncombine the blocks of T
+  blocks_uncomb = uncombine_blocks(nzblocks(T),combdim,blockcomb)
+  blocks_uncomb_perm = perm_blocks(blocks_uncomb,combdim,invperm(blockperm))
+  boffs_uncomb_perm,nnz_uncomb_perm = blockoffsets(blocks_uncomb_perm,inds_uncomb_perm)
+  T_uncomb_perm = Tensor(BlockSparse(ElT,boffs_uncomb_perm,nnz_uncomb_perm),inds_uncomb_perm)
+  R = reshape(T_uncomb_perm,is)
+  return R
+end
+
+function Base.reshape(blockT::Block{NT},
+                      indsT,
+                      indsR) where {NT}
+  nblocksT = nblocks(indsT)
+  nblocksR = nblocks(indsR)
+  blockR = Tuple(CartesianIndices(nblocksR)[LinearIndices(nblocksT)[CartesianIndex(blockT)]])
+  return blockR
+end
+
+function uncombine(T::BlockSparseTensor{<:Number,NT},
+                   is,
+                   combdim::Int,
+                   blockperm::Vector{Int},
+                   blockcomb::Vector{Int}) where {NT}
+  NR = length(is)
+  R = uncombine_output(T,is,combdim,blockperm,blockcomb)
+  invblockperm = invperm(blockperm)
+
+  # This is needed for reshaping the block
+  # It is already calculated in uncombine_output, use it from there
+  ind_uncomb_perm = ⊗(setdiff(is,inds(T))...)
+  ind_uncomb = permuteblocks(ind_uncomb_perm,blockperm)
+  # Same as inds(T) but with the blocks uncombined
+  inds_uncomb = insertat(inds(T),ind_uncomb,combdim)
+  inds_uncomb_perm = insertat(inds(T),ind_uncomb_perm,combdim)
+
+  for bof in blockoffsets(T)
+    b = block(bof)
+    Tb_tot = blockview(T,bof)
+    dimsTb_tot = dims(Tb_tot)
+
+    bs_uncomb = uncombine_block(b,combdim,blockcomb)
+
+    offset = 0
+    for i in 1:length(bs_uncomb)
+      b_uncomb = bs_uncomb[i]
+      b_uncomb_perm = perm_block(b_uncomb,combdim,invblockperm)
+      b_uncomb_perm_reshape = reshape(b_uncomb_perm,inds_uncomb_perm,is)
+
+      Rb = blockview(R,b_uncomb_perm_reshape)
+
+      b_uncomb_in_combined_dim = b_uncomb_perm[combdim]
+
+      start = offset+1
+      stop = offset+blockdim(ind_uncomb_perm,b_uncomb_in_combined_dim)
+      subind = ntuple(i->i==combdim ? range(start,stop=stop) : range(1,stop=dimsTb_tot[i]),NT)
+
+      offset = stop
+
+      Tb = @view array(Tb_tot)[subind...]
+
+      copyto!(Rb,Tb)
+    end
+  end
   return R
 end
 
@@ -386,19 +614,11 @@ end
 #  return R
 #end
 
-# TODO: handle case with different element types in R and T
-function permutedims!!(R::BlockSparseTensor{<:Number,N},
-                       T::BlockSparseTensor{<:Number,N},
-                       perm::NTuple{N,Int},
-                       f::Function=(r,t)->t) where {N}
-  blockoffsetsTp,indsTp = permute(blockoffsets(T),inds(T),perm)
-  indsTp != inds(R) && error("In permutedims!!, output indices are not permutation of input")
-  if blockoffsetsTp == blockoffsets(R)
-    R = permutedims!(R,T,perm,f)
-    return R
+function Base.copyto!(R::BlockSparseTensor,
+                      T::BlockSparseTensor)
+  for bof in blockoffsets(T)
+    copyto!(blockview(R,block(bof)),blockview(T,bof))
   end
-  R = similar(T,blockoffsetsTp,indsTp)
-  permutedims!(R,T,perm,f)
   return R
 end
 
@@ -409,6 +629,21 @@ permfactor(p,block::NTuple{N,Int},inds) where {N} = 1.0
 #  # intentionally left blank
 #  # can be overridden for special inds types by calling library
 #end
+
+# TODO: handle case where:
+# f(zero(ElR),zero(ElT)) != promote_type(ElR,ElT)
+function permutedims!!(R::BlockSparseTensor{ElR,N},
+                       T::BlockSparseTensor{ElT,N},
+                       perm::NTuple{N,Int},
+                       f::Function=(r,t)->t) where {ElR,ElT,N}
+  # TODO: write a custom function for merging two sorted
+  # lists with no repeated elements
+  nzblocksRR = unique!(sort(vcat(nzblocks(R),permutedims(nzblocks(T),perm));lt=isblockless))
+  RR = BlockSparseTensor(promote_type(ElR,ElT),nzblocksRR,inds(R))
+  copyto!(RR,R)
+  permutedims!(RR,T,perm,f)
+  return RR
+end
 
 function Base.permutedims!(R::BlockSparseTensor{<:Number,N},
                            T::BlockSparseTensor{<:Number,N},
@@ -624,14 +859,6 @@ end
 const IntTuple = NTuple{N,Int} where N
 const IntOrIntTuple = Union{Int,IntTuple}
 
-function ⊗(dim1::BlockDim,dim2::BlockDim)
-  dimR = BlockDim(undef,nblocks(dim1)*nblocks(dim2))
-  for (i,t) in enumerate(Iterators.product(dim1,dim2))
-    dimR[i] = prod(t)
-  end
-  return dimR
-end
-
 function permute_combine(inds::IndsT,
                          pos::Vararg{IntOrIntTuple,N}) where {IndsT,N}
   IndT = eltype(IndsT)
@@ -680,7 +907,7 @@ function permute_combine(boffs::BlockOffsets,
                          inds::IndsT,
                          pos::Vararg{IntOrIntTuple,N}) where {IndsT,N}
   perm = tuplecat(pos...)
-  boffsp,indsp = permute(boffs,inds,perm)
+  boffsp,indsp = permutedims(boffs,inds,perm)
   indsR = combine(indsp,pos...)
   boffsR = reshape(boffsp,indsp,indsR)
   return boffsR,indsR
@@ -726,6 +953,8 @@ end
 
 function Base.reshape(T::BlockSparseTensor,
                       indsR)
+  # TODO: add some checks that the block dimensions
+  # are consistent (e.g. nnzblocks(T) == nnzblocks(R), etc.)
   boffsR = reshape(blockoffsets(T),inds(T),indsR)
   R = reshape(T,boffsR,indsR)
   return R
@@ -754,13 +983,35 @@ end
 # Print block sparse tensors
 #
 
-function Base.summary(io::IO,
-                      T::BlockSparseTensor{ElT,N}) where {ElT,N}
-  println(io,Base.dims2string(dims(T))," ",typeof(T))
-  for (dim,ind) in enumerate(inds(T))
-    println(io,"Dim $dim: ",ind)
+#function Base.summary(io::IO,
+#                      T::BlockSparseTensor{ElT,N}) where {ElT,N}
+#  println(io,Base.dims2string(dims(T))," ",typeof(T))
+#  for (dim,ind) in enumerate(inds(T))
+#    println(io,"Dim $dim: ",ind)
+#  end
+#  println(io,"Number of nonzero blocks: ",nnzblocks(T))
+#end
+
+#function Base.summary(io::IO,
+#                      T::BlockSparseTensor{ElT,N}) where {ElT,N}
+#  println(io,typeof(T))
+#  println(io,Base.dims2string(dims(T))," ",typeof(T))
+#  for (dim,ind) in enumerate(inds(T))
+#    println(io,"Dim $dim: ",ind)
+#  end
+#  println("Number of nonzero blocks: ",nnzblocks(T))
+#end
+
+function _range2string(rangestart::NTuple{N,Int},
+                       rangeend::NTuple{N,Int}) where {N}
+  s = ""
+  for n in 1:N
+    s = string(s,rangestart[n],":",rangeend[n])
+    if n < N
+      s = string(s,", ")
+    end
   end
-  println(io,"Number of nonzero blocks: ",nnzblocks(T))
+  return s
 end
 
 function Base.show(io::IO,
@@ -772,13 +1023,12 @@ function Base.show(io::IO,
     blockdimsT = blockdims(T,block)
     # Print the location of the current block
     println(io,"Block: ",block)
+    println(io," [",_range2string(blockstart(T,block),blockend(T,block)),"]")
+    #println(io,"Start: ",Tuple(blockstart(T,block)))
+    #println(io,"End: ",Tuple(blockend(T,block)))
     # Print the dimension of the current block
-    println(io," ",Base.dims2string(blockdimsT))
-    # TODO: replace with a Tensor show method
-    # instead of converting to array (for other
-    # storage types, like CuArray)
-    Tblock = array(blockview(T,block))
-    Base.print_array(io,Tblock)
+    #println(io,"   (",Base.dims2string(blockdimsT),")")
+    print_tensor(io,blockview(T,block))
     println(io)
     println(io)
   end

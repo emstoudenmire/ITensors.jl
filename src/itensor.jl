@@ -2,12 +2,24 @@ export ITensor,
        itensor,
        axpy!,
        combiner,
-       combinedindex,
+       combinedind,
        delta,
        δ,
        exphermitian,
-       replaceindex!,
+       hasind,
+       hasinds,
+       hassameinds,
+       firstind,
        inds,
+       ind,
+       commoninds,
+       commonind,
+       noncommoninds,
+       noncommonind,
+       uniqueinds,
+       uniqueind,
+       unioninds,
+       unionind,
        isnull,
        scale!,
        matmul,
@@ -28,7 +40,19 @@ export ITensor,
        set_warnorder,
        store,
        dense,
-       real_if_close
+       setelt,
+       prime!,
+       setprime!,
+       noprime!,
+       mapprime!,
+       swapprime!,
+       addtags!,
+       removetags!,
+       replacetags!,
+       settags!,
+       swaptags!,
+       replaceind!,
+       replaceinds!
 
 """
 An ITensor is a tensor whose interface is 
@@ -48,12 +72,18 @@ mutable struct ITensor{N}
 end
 ITensor(st,is::IndexSet{N}) where {N} = ITensor{N}(st,is)
 
+ITensor{N}(st,is::NTuple{N,IndT}) where {N,IndT<:Index} = ITensor{N}(st,IndexSet(is))
+ITensor(st,is::NTuple{N,IndT}) where {N,IndT<:Index} = ITensor{N}(st,IndexSet(is))
+
 Tensors.inds(T::ITensor) = T.inds
 Tensors.store(T::ITensor) = T.store
+ind(T::ITensor,i::Int) = inds(T)[i]
 
-# TODO: do we need these? I think yes, for add!(::ITensor,::ITensor)
-setinds!(T::ITensor,is...) = (T.inds = IndexSet(is...))
-setstore!(T::ITensor,st::TensorStorage) = (T.store = st)
+setinds!(T::ITensor,is) = (T.inds = is; return T)
+setstore!(T::ITensor,st::TensorStorage) = (T.store = st; return T)
+
+setinds(T::ITensor,is) = ITensor(store(T),is)
+setstore(T::ITensor,st) = ITensor(st,inds(T))
 
 #
 # Iteration over ITensors
@@ -90,23 +120,32 @@ Construct an ITensor having indices
 given by the IndexSet `iset`
 """
 ITensor(is::IndexSet) = ITensor(Float64,is)
-ITensor() = ITensor{0}(Dense{Nothing}(),IndexSet())
 ITensor(inds::Vararg{Index,N}) where {N} = ITensor(IndexSet{N}(inds...))
 
-function ITensor(::Type{T},
-                 inds::IndexSet{N}) where {T<:Number,N}
-  return ITensor{N}(Dense{float(T)}(zeros(float(T),dim(inds))),inds)
+# TODO: make this Dense(Float64[]), Dense([0.0]), Dense([1.0])?
+ITensor() = ITensor{0}(Dense{Nothing}(),IndexSet())
+
+function ITensor(::Type{ElT},
+                 inds::IndexSet{N}) where {ElT<:Number,N}
+  return ITensor{N}(Dense(ElT,dim(inds)),inds)
 end
-ITensor(::Type{T},inds::Index...) where {T<:Number} = ITensor(T,IndexSet(inds...))
+ITensor(::Type{ElT},inds::Index...) where {ElT<:Number} = ITensor(ElT,IndexSet(inds...))
+
+function ITensor(::Type{ElT},
+                 ::UndefInitializer,
+                 inds::IndexSet{N}) where {ElT<:Number,N}
+  return ITensor{N}(Dense(ElT,undef,dim(inds)),inds)
+end
+ITensor(::Type{ElT},::UndefInitializer,inds::Index...) where {ElT} = ITensor(ElT,undef,IndexSet(inds...))
 
 function ITensor(::UndefInitializer,
                  inds::IndexSet{N}) where {N}
-  return ITensor{N}(Dense{Float64}(Vector{Float64}(undef,dim(inds))),inds)
+  return ITensor{N}(Dense(undef,dim(inds)),inds)
 end
-ITensor(x::UndefInitializer,inds::Index...) = ITensor(x,IndexSet(inds...))
+ITensor(::UndefInitializer,inds::Index...) = ITensor(undef,IndexSet(inds...))
 
-function ITensor(x::S,inds::IndexSet{N}) where {S<:Number,N}
-  return ITensor{N}(Dense{float(S)}(fill(float(x),dim(inds))),inds)
+function ITensor(x::Number,inds::IndexSet{N}) where {N}
+  return ITensor{N}(Dense(fill(float(x),dim(inds))),inds)
 end
 
 """
@@ -117,15 +156,18 @@ Construct a scalar ITensor with value `x`.
     ITensor(x,i,j,...)
 
 Construct an ITensor with indices `i`,`j`,...
-and all elements set to `x`.
-"""
-ITensor(x::S,inds::Index...) where {S<:Number} = ITensor(x,IndexSet(inds...))
+and all elements set to `float(x)`.
 
-function ITensor(A::Array{S},inds::IndexSet{N}) where {S<:Number,N}
+Note that the ITensor storage will be the closest
+floating point version of the input value.
+"""
+ITensor(x::Number,inds::Index...) = ITensor(x,IndexSet(inds...))
+
+function ITensor(A::Array{<:Number},inds::IndexSet{N}) where {N}
   length(A) ≠ dim(inds) && throw(DimensionMismatch("In ITensor(Array,IndexSet), length of Array ($(length(A))) must match total dimension of IndexSet ($(dim(inds)))"))
-  return ITensor{N}(Dense{float(S)}(float(vec(A))),inds)
+  return ITensor{N}(Dense(float(vec(A))),inds)
 end
-ITensor(A::Array{S},inds::Index...) where {S<:Number} = ITensor(A,IndexSet(inds...))
+ITensor(A::Array{<:Number},inds::Index...) = ITensor(A,IndexSet(inds...))
 
 #
 # Diag ITensor constructors
@@ -140,7 +182,7 @@ The storage will have Diag type.
 """
 function diagITensor(::Type{T},
                      is::IndexSet{N}) where {T<:Number,N}
-  return ITensor{N}(Diag(zeros(T,mindim(is))),is)
+  return ITensor{N}(Diag(T,mindim(is)),is)
 end
 
 """
@@ -160,8 +202,8 @@ The diagonal elements will be set to the values stored in `v` and
 the ITensor will have element type `float(T)`.
 The storage will have Diag type.
 """
-function diagITensor(v::Vector{T},
-                     is::IndexSet) where {T<:Number}
+function diagITensor(v::Vector{<:Number},
+                     is::IndexSet)
   length(v) ≠ mindim(is) && error("Length of vector for diagonal must equal minimum of the dimension of the input indices")
   return ITensor(Diag(float(v)),is)
 end
@@ -174,8 +216,8 @@ The diagonal elements will be set to the values stored in `v` and
 the ITensor will have element type `float(T)`.
 The storage will have Diag type.
 """
-function diagITensor(v::Vector{T},
-                     is::Index...) where {T<:Number}
+function diagITensor(v::Vector{<:Number},
+                     is::Index...)
   return diagITensor(v,IndexSet(is...))
 end
 
@@ -205,8 +247,8 @@ The diagonal elements will be set to the value `x` and
 the ITensor will have element type `float(T)`.
 The storage will have Diag type.
 """
-function diagITensor(x::T,
-                     is::IndexSet) where {T<:Number}
+function diagITensor(x::Number,
+                     is::IndexSet)
   return ITensor(Diag(fill(float(x),mindim(is))),is)
 end
 
@@ -218,8 +260,8 @@ The diagonal elements will be set to the value `x` and
 the ITensor will have element type `float(T)`.
 The storage will have Diag type.
 """
-function diagITensor(x::T,
-                     is::Index...) where {T<:Number}
+function diagITensor(x::Number,
+                     is::Index...)
   return diagITensor(x,IndexSet(is...))
 end
 
@@ -228,7 +270,7 @@ end
 
 Make a diagonal ITensor with all diagonal elements 1.
 """
-function delta(::Type{T},is::IndexSet) where {T}
+function delta(::Type{T},is::IndexSet) where {T<:Number}
   return ITensor(Diag(one(T)),is)
 end
 
@@ -237,7 +279,7 @@ end
 
 Make a diagonal ITensor with all diagonal elements 1.
 """
-function delta(::Type{T},is::Index...) where {T}
+function delta(::Type{T},is::Index...) where {T<:Number}
   return delta(T,IndexSet(is...))
 end
 
@@ -246,6 +288,12 @@ delta(is::IndexSet) = delta(Float64,is)
 delta(is::Index...) = delta(IndexSet(is...))
 const δ = delta
 
+function setelt(iv)
+  A = ITensor(ind(iv))
+  A[val(iv)] = 1.0
+  return A
+end
+
 """
 dense(T::ITensor)
 
@@ -253,7 +301,7 @@ Make a copy of the ITensor where the storage is the dense version.
 For example, an ITensor with Diag storage will become Dense storage.
 """
 function Tensors.dense(T::ITensor)
-  ITensor(dense(Tensor(store(T),inds(T))))
+  ITensor(dense(tensor(T)))
 end
 
 """
@@ -261,11 +309,11 @@ complex(T::ITensor)
 
 Convert to the complex version of the storage.
 """
-Base.complex(T::ITensor) = ITensor(complex(Tensor(store(T),inds(T))))
+Base.complex(T::ITensor) = ITensor(complex(tensor(T)))
 
 # This constructor allows many IndexSet
 # set operations to work with ITensors
-IndexSet(T::ITensor) = inds(T)
+#IndexSet(T::ITensor) = inds(T)
 
 Base.eltype(T::ITensor) = eltype(tensor(T))
 
@@ -354,8 +402,7 @@ end
 # CartesianIndices
 Base.getindex(T::ITensor{N},I::CartesianIndex{N}) where {N} = tensor(T)[I]::Number
 
-function Base.getindex(T::ITensor{N},
-                       ivs::Vararg{IndexVal,N}) where {N}
+function Base.getindex(T::ITensor,ivs...)
   p = getperm(inds(T),ivs)
   vals = permute(val.(ivs),p)
   return T[vals...]
@@ -371,12 +418,18 @@ end
 
 Base.getindex(T::ITensor) = tensor(T)[]
 
-Base.setindex!(T::ITensor{N},x::Number,vals::Vararg{Int,N}) where {N} = (tensor(T)[vals...] = x)
+function Base.setindex!(T::ITensor,x::Number,vals::Int...)
+  fluxT = flux(T)
+  (!isnothing(fluxT) && fluxT != flux(T,vals...)) && error("setindex! not consistent with current flux")
+  tensor(T)[vals...] = x
+  return T
+end
 
-function Base.setindex!(T::ITensor,x::Number,ivs::IndexVal...)
+function Base.setindex!(T::ITensor,x::Number,ivs...)
   p = getperm(inds(T),ivs)
   vals = permute(val.(ivs),p)
-  return T[vals...] = x
+  T[vals...] = x
+  return T
 end
 
 function Base.fill!(T::ITensor,
@@ -386,72 +439,116 @@ function Base.fill!(T::ITensor,
   return T
 end
 
-# TODO: implement in terms of delta tensors (better for QNs)
-function replaceindex!(A::ITensor,i::Index,j::Index)
-  pos = indexpositions(A,i)
-  inds(A)[pos[1]] = j
-  return A
-end
+itensor2inds(A::ITensor) = inds(A)
+itensor2inds(A) = A
 
-function replaceinds!(A::ITensor,inds1,inds2)
-  is1 = IndexSet(inds1)
-  is2 = IndexSet(inds2)
-  pos = indexpositions(A,is1)
-  for (j,p) ∈ enumerate(pos)
-    inds(A)[p] = is2[j]
+
+# in
+hasind(A,i::Index) = i ∈ itensor2inds(A)
+
+# issubset
+hasinds(A,is) = is ⊆ itensor2inds(A)
+hasinds(A,is::Index...) = hasinds(A,IndexSet(is...))
+
+# issetequal
+hassameinds(A,B) = issetequal(itensor2inds(A),
+                              itensor2inds(B))
+
+# intersect
+commoninds(A...; kwargs...) = IndexSet(intersect(itensor2inds.(A)...;
+                                                 kwargs...)...)
+
+# firstintersect
+commonind(A...; kwargs...) = firstintersect(itensor2inds.(A)...;
+                                            kwargs...)
+
+# symdiff
+noncommoninds(A...; kwargs...) = IndexSet(symdiff(itensor2inds.(A)...;
+                                               kwargs...)...)
+
+# firstsymdiff
+noncommonind(A...; kwargs...) = getfirst(symdiff(itensor2inds.(A)...;
+                                                 kwargs...))
+
+# setdiff
+uniqueinds(A...; kwargs...) = IndexSet(setdiff(itensor2inds.(A)...;
+                                               kwargs...)...)
+
+# firstsetdiff
+uniqueind(A...; kwargs...) = firstsetdiff(itensor2inds.(A)...;
+                                          kwargs...)
+
+# union
+unioninds(A...; kwargs...) = IndexSet(union(itensor2inds.(A)...;
+                                            kwargs...)...)
+
+# firstsymdiff
+unionind(A...; kwargs...) = getfirst(union(itensor2inds.(A)...;
+                                           kwargs...))
+
+firstind(A...; kwargs...) = getfirst(itensor2inds.(A)...;
+                                     kwargs...)
+
+Tensors.inds(A...; kwargs...) = filter(itensor2inds.(A)...;
+                                       kwargs...)
+
+# in-place versions of priming and tagging
+for fname in (:prime,
+              :setprime,
+              :noprime,
+              :mapprime,
+              :swapprime,
+              :addtags,
+              :removetags,
+              :replacetags,
+              :settags,
+              :swaptags,
+              :replaceind,
+              :replaceinds)
+  @eval begin
+    $fname(f::Function,
+           A::ITensor,
+           args...) = setinds(A,$fname(f,
+                                       inds(A),
+                                       args...))
+
+    $(Symbol(fname,:!))(f::Function,
+                        A::ITensor,
+                        args...) = setinds!(A,$fname(f,
+                                                     inds(A),
+                                                     args...))
+
+    $fname(A::ITensor,
+           args...;
+           kwargs...) = setinds(A,$fname(inds(A),
+                                         args...;
+                                         kwargs...))
+
+    $(Symbol(fname,:!))(A::ITensor,
+                        args...;
+                        kwargs...) = setinds!(A,$fname(inds(A),
+                                                       args...;
+                                                       kwargs...))
   end
-  return A
 end
 
-# TODO: can we turn these into a macro?
-# for f ∈ (prime,setprime,noprime,...)
-#   f(A::ITensor,vargs...) = ITensor(store(A),f(inds(A),vargs...))
-#   f!(A::ITensor,vargs...) = ( f!(inds(A),vargs...); return A )
-# end
+"""
+adjoint(A::ITensor)
 
-# TODO: implement more in-place versions
-
-prime!(A::ITensor,vargs...)= ( prime!(inds(A),vargs...); return A )
-prime(A::ITensor,vargs...)= ITensor(store(A),prime(inds(A),vargs...))
+For A' notation.
+"""
 Base.adjoint(A::ITensor) = prime(A)
 
-setprime(A::ITensor,vargs...) = ITensor(store(A),setprime(inds(A),vargs...))
-
-noprime(A::ITensor,vargs...) = ITensor(store(A),noprime(inds(A),vargs...))
-
-mapprime(A::ITensor,vargs...) = ITensor(store(A),mapprime(inds(A),vargs...))
-
-swapprime(A::ITensor,vargs...) = ITensor(store(A),swapprime(inds(A),vargs...))
-
-addtags(A::ITensor,vargs...) = ITensor(store(A),addtags(inds(A),vargs...))
-
-removetags(A::ITensor,vargs...) = ITensor(store(A),removetags(inds(A),vargs...))
-
-replacetags!(A::ITensor,vargs...) = ( replacetags!(inds(A),vargs...); return A )
-replacetags(A::ITensor,vargs...) = ITensor(store(A),replacetags(inds(A),vargs...))
-
-settags!(A::ITensor,vargs...) = ( settags!(inds(A),vargs...); return A )
-settags(A::ITensor,vargs...) = ITensor(store(A),settags(inds(A),vargs...))
-
-swaptags(A::ITensor,vargs...) = ITensor(store(A),swaptags(inds(A),vargs...))
-
-# TODO: implement in a better way (more generically for other storage)
 Base.:(==)(A::ITensor,B::ITensor) = (norm(A-B) == zero(promote_type(eltype(A),eltype(B))))
 
+# TODO: can we define this as:
+# isapprox(A::ITensor,B::ITensor; kwargs...) = isapprox(norm(A-B),0; kwargs...)
 function Base.isapprox(A::ITensor,
                        B::ITensor;
                        atol::Real=0.0,
                        rtol::Real=Base.rtoldefault(eltype(A),eltype(B),atol))
     return norm(A-B) <= atol + rtol*max(norm(A),norm(B))
 end
-
-# TODO: bring this back or just use T[]?
-# I think T[] may not be generic, since it may only work if order(T)==0
-# so it may be nice to have a seperate scalar(T) for when dim(T)==1
-#function scalar(T::ITensor)
-#  !(order(T)==0 || dim(T)==1) && throw(ArgumentError("ITensor with inds $(inds(T)) is not a scalar"))
-#  return scalar(tensor(store(T),inds(T)))
-#end
 
 function Random.randn!(T::ITensor)
   return randn!(tensor(T))
@@ -479,6 +576,9 @@ randomITensor(inds::Indices) = randomITensor(Float64,
 randomITensor(inds::Index...) = randomITensor(Float64,
                                               IndexSet(inds...))
 
+randomITensor(::Type{ElT}) where {ElT<:Number} = randomITensor(ElT,IndexSet())
+randomITensor() = randomITensor(Float64)
+
 function combiner(inds::IndexSet; kwargs...)
   tags = get(kwargs, :tags, "CMB,Link")
   new_ind = Index(prod(dims(inds)), tags)
@@ -486,12 +586,18 @@ function combiner(inds::IndexSet; kwargs...)
   return ITensor(Combiner(),new_is),new_ind
 end
 combiner(inds::Index...; kwargs...) = combiner(IndexSet(inds...); kwargs...)
+combiner(inds::Tuple{Vararg{Index}}; kwargs...) = combiner(inds...; kwargs...)
 
-combinedindex(T::ITensor) = store(T) isa Combiner ? store(T).ci : nothing
+# Special case when no indices are combined (useful for generic code)
+function combiner(; kwargs...)
+  return ITensor(Combiner(),IndexSet()),nothing
+end
+
+combinedind(T::ITensor) = store(T) isa Combiner ? inds(T)[1] : nothing
 
 LinearAlgebra.norm(T::ITensor) = norm(tensor(T))
 
-function dag(T::ITensor)
+function Tensors.dag(T::ITensor)
   TT = conj(tensor(T))
   return ITensor(store(TT),dag(inds(T)))
 end
@@ -513,12 +619,12 @@ Base.:/(A::ITensor,x::Number) = A*(1.0/x)
 Base.:-(A::ITensor) = ITensor(-tensor(A))
 function Base.:+(A::ITensor,B::ITensor)
   C = copy(A)
-  C = add!(C,B)
+  C .+= B
   return C
 end
 function Base.:-(A::ITensor,B::ITensor)
   C = copy(A)
-  C = add!(C,-1,B)
+  C .-= B
   return C
 end
 
@@ -539,7 +645,7 @@ function Base.:*(A::ITensor,B::ITensor)
   C = ITensor(CT)
   warnTensorOrder = GLOBAL_PARAMS["WarnTensorOrder"]
   if warnTensorOrder > 0 && order(C) >= warnTensorOrder
-    println("Warning: contraction resulted in ITensor with $(order(C)) indices")
+    @warn "Contraction resulted in ITensor with $(order(C)) indices"
   end
   return C
 end
@@ -589,7 +695,7 @@ end
 
 Normalize an ITensor in-place, such that norm(T)==1.
 """
-LinearAlgebra.normalize!(T::ITensor) = scale!(T,1/norm(T))
+LinearAlgebra.normalize!(T::ITensor) = (T .*= 1/norm(T))
 
 """
     copyto!(B::ITensor, A::ITensor)
@@ -615,11 +721,11 @@ B .+= A
 B .+= α .* A
 ```
 """
-add!(R::ITensor,T::ITensor) = add!(R,1,T)
+add!(R::ITensor,T::ITensor) = apply!(R,T,(r,t)->r+t)
 
-function add!(R::ITensor{N},α::Number,T::ITensor{N}) where {N}
-  return apply!(R,T,(r,t)->r+α*t)
-end
+add!(R::ITensor,α::Number,T::ITensor) = apply!(R,T,(r,t)->r+α*t)
+
+add!(R::ITensor,T::ITensor,α::Number) = (R .+= α .* T)
 
 """
     add!(A::ITensor, α::Number, β::Number, B::ITensor)
@@ -629,9 +735,7 @@ Add ITensors α*A and β*B and store the result in A.
 A .= α .* A .+ β .* B
 ```
 """
-function add!(R::ITensor{N},αr::Number,αt::Number,T::ITensor{N}) where {N}
-  return apply!(R,T,(r,t)->αr*r+αt*t)
-end
+add!(R::ITensor,αr::Number,αt::Number,T::ITensor) = apply!(R,T,(r,t)->αr*r+αt*t)
 
 function apply!(R::ITensor{N},T::ITensor{N},f::Function) where {N}
   perm = getperm(inds(R),inds(T))
@@ -652,13 +756,16 @@ end
 w .+= a .* v
 ```
 """
-LinearAlgebra.axpy!(a::Number,v::ITensor,w::ITensor) = add!(w,a,v)
+LinearAlgebra.axpy!(a::Number,v::ITensor,w::ITensor) = (w .+= a .* v)
 
-# This is not implemented correctly
-#"""
-#w .= a .* v + b .* w
-#"""
-#LinearAlgebra.axpby!(a::Number,v::ITensor,b::Number,w::ITensor) = add!(w,b,a,v)
+"""
+axpby!(a,v,b,w)
+
+```
+w .= a .* v + b .* w
+```
+"""
+LinearAlgebra.axpby!(a::Number,v::ITensor,b::Number,w::ITensor) = (w .= a .* v + b .* w)
 
 """
     scale!(A::ITensor,x::Number) = rmul!(A,x)
@@ -682,7 +789,32 @@ Scalar multiplication of ITensor B with x, and store the result in A.
 Like `A .= x .* B`.
 """
 LinearAlgebra.mul!(R::ITensor,α::Number,T::ITensor) = apply!(R,T,(r,t)->α*t )
-LinearAlgebra.mul!(R::ITensor,T::ITensor,α::Number) = mul!(R,α,T)
+LinearAlgebra.mul!(R::ITensor,T::ITensor,α::Number) = (R .= α .* T)
+
+#
+# Block sparse related functions
+# (Maybe create fallback definitions for dense tensors)
+#
+
+hasqns(T::ITensor) = hasqns(inds(T))
+
+Tensors.nnz(T::ITensor) = nnz(tensor(T))
+Tensors.nnzblocks(T::ITensor) = nnzblocks(tensor(T))
+Tensors.block(T::ITensor,args...) = block(tensor(T),args...)
+Tensors.nzblocks(T::ITensor) = nzblocks(tensor(T))
+Tensors.blockoffsets(T::ITensor) = blockoffsets(tensor(T))
+flux(T::ITensor,args...) = flux(inds(T),args...)
+
+Tensors.addblock!(T::ITensor,args...) = addblock!(tensor(T),args...)
+
+function flux(T::ITensor)
+  !hasqns(T) && return nothing
+  nnzblocks(T) == 0 && return nothing
+  bofs = blockoffsets(T)
+  block1 = block(bofs,1)
+  return flux(T,block1)
+end
+
 
 #######################################################################
 #
@@ -715,6 +847,337 @@ end
 
 #######################################################################
 #
+# ITensor broadcast support
+#
+
+#
+# ITensorStyle
+#
+
+struct ITensorStyle <: Broadcast.BroadcastStyle end
+Broadcast.BroadcastStyle(::Type{<:ITensor}) = ITensorStyle()
+
+Broadcast.broadcastable(T::ITensor) = T
+
+function Base.similar(bc::Broadcast.Broadcasted{ITensorStyle},
+                      ::Type{ElT}) where {ElT<:Number}
+  A = find_type(ITensor,bc.args)
+  return similar(A,ElT)
+end
+
+#
+# ITensorOpScalarStyle
+#
+
+struct ITensorOpScalarStyle <: Broadcast.BroadcastStyle end
+
+Base.BroadcastStyle(::ITensorStyle, ::Broadcast.DefaultArrayStyle{0}) = ITensorOpScalarStyle()
+
+Broadcast.instantiate(bc::Broadcast.Broadcasted{ITensorOpScalarStyle}) = bc
+
+function Broadcast.broadcasted(a::typeof(Base.literal_pow), b::typeof(^), T::ITensor, x::Val)
+  return Broadcast.broadcasted(ITensorOpScalarStyle(),Base.literal_pow,Ref(^),T,Ref(x))
+end
+
+function Base.similar(bc::Broadcast.Broadcasted{ITensorOpScalarStyle},
+                      ::Type{ElT}) where {ElT<:Number}
+  A = find_type(ITensor,bc.args)
+  return similar(A,ElT)
+end
+
+#
+# ITensorMulAddStyle
+#
+
+struct ITensorMulAddStyle <: Broadcast.BroadcastStyle end
+
+Base.BroadcastStyle(::ITensorStyle, ::ITensorOpScalarStyle) = ITensorMulAddStyle()
+
+Broadcast.instantiate(bc::Broadcast.Broadcasted{ITensorMulAddStyle}) = bc
+
+#
+# For arbitrary function chaining f.(g.(h.(x)))
+#
+
+function Broadcast.instantiate(bc::Broadcast.Broadcasted{ITensorStyle,
+                                                         <:Any,
+                                                         <:Function,
+                                                         <:Tuple{Broadcast.Broadcasted}})
+  return Broadcast.instantiate(Broadcast.broadcasted(bc.f∘bc.args[1].f,bc.args[1].args...))
+end
+
+function Broadcast.instantiate(bc::Broadcast.Broadcasted{ITensorStyle,
+                                                         <:Any,
+                                                         <:Function,
+                                                         <:Tuple{Broadcast.Broadcasted{ITensorStyle,
+                                                                                       <:Any,
+                                                                                       <:Function,
+                                                                                       <:Tuple{<:ITensor}}}})
+  return Broadcast.broadcasted(bc.f∘bc.args[1].f,bc.args[1].args...)  
+end
+
+Broadcast.instantiate(bc::Broadcast.Broadcasted{ITensorStyle}) = bc
+
+#
+# Some helper functionality to find certain
+# inputs in the argument list
+#
+
+"`A = find_type(::Type,As)` returns the first of type Type among the arguments."
+find_type(::Type{T},args::Tuple) where {T} = find_type(T, find_type(T,args[1]), Base.tail(args))
+find_type(::Type{T},x) where {T} = x
+find_type(::Type{T},a::T,rest) where {T} = a
+find_type(::Type{T},::Any,rest) where {T} = find_type(T,rest)
+
+#
+# For B .= α .* A
+#
+
+function Base.copyto!(T::ITensor,
+                      bc::Broadcast.Broadcasted{ITensorOpScalarStyle,
+                                                <:Any,
+                                                typeof(*)})
+  α = find_type(Number,bc.args)
+  A = find_type(ITensor,bc.args)
+  if A === T
+    scale!(T,α)
+  else
+    mul!(T,α,A)
+  end
+  return T
+end
+
+#
+# For B .= A .^ 2.5
+#
+
+function Base.copyto!(R::ITensor,
+                      bc::Broadcast.Broadcasted{ITensorOpScalarStyle,
+                                                <:Any,
+                                                typeof(^)})
+  α = find_type(Number,bc.args)
+  T = find_type(ITensor,bc.args)
+  apply!(R,T,(r,t)->t^α)
+  return R
+end
+
+#
+# For A .= α
+#
+
+function Base.copyto!(T::ITensor,
+                      bc::Broadcast.Broadcasted{Broadcast.DefaultArrayStyle{0},
+                                                <:Any,
+                                                typeof(identity),
+                                                <:Tuple{<:Number}})
+  fill!(T,bc.args[1])
+  return T
+end
+
+#
+# For B .= A
+#
+
+function Base.copyto!(T::ITensor,
+                      bc::Broadcast.Broadcasted{ITensorStyle,
+                                                <:Any,
+                                                typeof(identity),
+                                                <:Tuple{<:ITensor}})
+  copyto!(T,bc.args[1])
+  return T
+end
+
+#
+# For B .+= A
+#
+
+function Base.copyto!(T::ITensor,
+                      bc::Broadcast.Broadcasted{ITensorStyle,
+                                                <:Any,
+                                                typeof(+),
+                                                <:Tuple{Vararg{<:ITensor}}})
+  if T === bc.args[1]
+    add!(T,bc.args[2])
+  elseif T === bc.args[2]
+    add!(T,bc.args[1])
+  else
+    error("When adding two ITensors in-place, one must be the same as the output ITensor")
+  end
+  return T
+end
+
+#
+# For B .-= A
+#
+
+function Base.copyto!(T::ITensor,
+                      bc::Broadcast.Broadcasted{ITensorStyle,
+                                                <:Any,
+                                                typeof(-)})
+  if T === bc.args[1]
+    add!(T,-1,bc.args[2])
+  elseif T === bc.args[2]
+    add!(T,-1,bc.args[1])
+  else
+    error("When adding two ITensors in-place, one must be the same as the output ITensor")
+  end
+  return T
+end
+
+#
+# For B .+= α .* A
+#
+
+function Base.copyto!(T::ITensor,
+                      bc::Broadcast.Broadcasted{ITensorMulAddStyle,<:Any,typeof(+)})
+  if T === bc.args[1]
+    add!(T,bc.args[2].args...)
+  elseif T === bc.args[2]
+    add!(T,bc.args[1].args...)
+  else
+    error("When adding two ITensors in-place, one must be the same as the output ITensor")
+  end
+  return T
+end
+
+#
+# For B .-= α .* A
+#
+
+function Base.copyto!(T::ITensor,
+                      bc::Broadcast.Broadcasted{ITensorMulAddStyle,<:Any,typeof(-)})
+  if T === bc.args[1]
+    add!(T,-1,bc.args[2].args...)
+  elseif T === bc.args[2]
+    add!(T,-1,bc.args[1].args...)
+  else
+    error("When adding two ITensors in-place, one must be the same as the output ITensor")
+  end
+  return T
+end
+
+#
+# For B .= β .* B .+ α .* A
+#
+
+function Base.copyto!(T::ITensor,
+                      bc::Broadcast.Broadcasted{ITensorOpScalarStyle,
+                                                <:Any,
+                                                typeof(+),
+                                                <:Tuple{Vararg{<:Broadcast.Broadcasted}}})
+  α = find_type(Number,bc.args[1].args)
+  A = find_type(ITensor,bc.args[1].args)
+  β = find_type(Number,bc.args[2].args)
+  B = find_type(ITensor,bc.args[2].args)
+  if T === A
+    add!(T,α,β,B)
+  elseif T === B
+    add!(T,β,α,A)
+  else
+    error("When adding two ITensors in-place, one must be the same as the output ITensor")
+  end
+  return T
+end
+
+#
+# For B .= A .+ α
+#
+
+function Base.copyto!(T::ITensor,
+                      bc::Broadcast.Broadcasted{ITensorOpScalarStyle,
+                                                <:Any,
+                                                typeof(+),
+                                                <:Tuple{Vararg{<:Union{<:ITensor,<:Number}}}})
+  α = find_type(Number,bc.args)
+  A = find_type(ITensor,bc.args)
+  tensor(T) .= tensor(A) .+ α
+  return T
+end
+
+#
+# For C .= A .* B
+#
+
+function Base.copyto!(T::ITensor,
+                      bc::Broadcast.Broadcasted{ITensorStyle,<:Any,typeof(*)})
+  error("C .= A .* B not supported right now")
+  return T
+end
+
+#
+# For B .= f.(A)
+#
+
+function Base.copyto!(R::ITensor,
+                      bc::Broadcast.Broadcasted{ITensorStyle,
+                                                <:Any,
+                                                <:Function,
+                                                <:Tuple{<:ITensor}})
+  apply!(R,bc.args[1],(r,t)->bc.f(t))
+  return R
+end
+
+#
+# For B .+= f.(A)
+#
+
+function Base.copyto!(R::ITensor,
+                      bc::Broadcast.Broadcasted{ITensorStyle,
+                                                <:Any,
+                                                typeof(+),
+                                                <:Tuple{Vararg{Union{<:ITensor,<:Broadcast.Broadcasted}}}})
+  R̃ = find_type(ITensor,bc.args)
+  bc2 = find_type(Broadcast.Broadcasted,bc.args)
+  if R === R̃
+    apply!(R,bc2.args[1],(r,t)->r+bc2.f(t))
+  else
+    error("In C .= B .+ f.(A), C and B must be the same ITensor")
+  end
+  return R
+end
+
+#
+# For B .= f.(B) + g.(A)
+#
+
+function Base.copyto!(R::ITensor,
+                      bc::Broadcast.Broadcasted{ITensorStyle,
+                                                <:Any,
+                                                typeof(+),
+                                                <:Tuple{Vararg{<:Broadcast.Broadcasted}}})
+  bc1 = bc.args[1]
+  bc2 = bc.args[2]
+  T1 = bc1.args[1]
+  f1 = bc1.f
+  T2 = bc2.args[1]
+  f2 = bc2.f
+  if R === T1
+    apply!(R,T2,(r,t)->f1(r)+f2(t))
+  elseif R === T2
+    apply!(R,T1,(r,t)->f2(r)+f1(t))
+  else
+    error("In C .= f.(B) .+ g.(A), C and B or A must be the same ITensor")
+  end
+  return R
+end
+
+#
+# For B = A .^ 2
+#
+
+function Base.copyto!(R::ITensor,
+                      bc::Broadcast.Broadcasted{ITensorOpScalarStyle,
+                                                <:Any,
+                                                typeof(Base.literal_pow)})
+  α = find_type(Base.RefValue{<:Val},bc.args).x
+  powf = find_type(Base.RefValue{<:Function},bc.args).x
+  T = find_type(ITensor,bc.args)
+  apply!(R,T,(r,t)->bc.f(^,t,α))
+  return R
+end
+
+#######################################################################
+#
 # Printing, reading and writing ITensors
 #
 
@@ -722,7 +1185,10 @@ function Base.summary(io::IO,
                       T::ITensor)
   print(io,"ITensor ord=$(order(T))")
   for i = 1:order(T)
-    if !(typeof(inds(T)[i]) <: QNIndex)
+    if hasqns(inds(T)[i])
+      startstr = (i==1) ? "\n" : ""
+      print(io,startstr,inds(T)[i])
+    else
       print(io," ",inds(T)[i])
     end
   end
@@ -732,8 +1198,9 @@ end
 # TODO: make a specialized printing from Diag
 # that emphasizes the missing elements
 function Base.show(io::IO,T::ITensor)
-  summary(io,T)
-  print(io,"\n")
+  #summary(io,T)
+  println(io,"ITensor ord=$(order(T))")
+  println(io)
   if !isnull(T)
     Base.show(io,MIME"text/plain"(),tensor(T))
   end
@@ -745,9 +1212,13 @@ function Base.show(io::IO,
   summary(io,T)
 end
 
+function Base.similar(T::ITensor)
+  return ITensor(similar(tensor(T)))
+end
+
 function Base.similar(T::ITensor,
-                      element_type=eltype(T))
-  return ITensor(similar(tensor(T),element_type))
+                      ::Type{ElT}) where {ElT<:Number}
+  return ITensor(similar(tensor(T),ElT))
 end
 
 function readcpp(io::IO,::Type{Dense{ValT}};kwargs...) where {ValT}
@@ -839,3 +1310,22 @@ function HDF5.read(parent::Union{HDF5File,HDF5Group},
 
   return ITensor(store,inds)
 end
+
+#
+# Deprecations
+#
+
+@deprecate findindex(args...; kwargs...) firstind(args...; kwargs...)
+
+@deprecate findinds(args...; kwargs...) inds(args...; kwargs...)
+
+@deprecate commonindex(args...; kwargs...) commonind(args...; kwargs...)
+
+@deprecate uniqueindex(args...; kwargs...) uniqueind(args...; kwargs...)
+
+@deprecate replaceindex!(args...; kwargs...) replaceind!(args...; kwargs...)
+
+@deprecate siteindex(args...; kwargs...) siteind(args...; kwargs...)
+
+@deprecate linkindex(args...; kwargs...) linkind(args...; kwargs...)
+

@@ -2,23 +2,28 @@ export Index,
        IndexVal,
        dag,
        prime,
+       setprime,
        noprime,
        addtags,
        settags,
+       space,
        readCpp,
        replacetags,
        replacetags!,
        removetags,
        hastags,
+       hasplev,
+       hasid,
        id,
        isdefault,
        dir,
+       setdir,
        plev,
        tags,
        ind,
-       setprime,
        sim,
-       val
+       val,
+       hasqns
 
 const IDType = UInt64
 
@@ -38,18 +43,14 @@ struct Index{T}
   space::T
   dir::Arrow
   tags::TagSet
-
-  function Index(id::IDType,dim::T,dir::Arrow,tags::TagSet) where {T}
-    # By default, an Index has a prime level of 0
-    # A prime level less than 0 is interpreted as the
-    # prime level not being set
-    !hasplev(tags) && (tags = setprime(tags,0))
-    return new{T}(id,dim,dir,tags)
+  plev::Int
+  function Index(id,space::T,dir,tags,plev) where {T}
+    return new{T}(id,space,dir,tags,plev)
   end
-
 end
+Index{SpaceT}(space::SpaceT,args...;vargs...) where {SpaceT} = Index(space,args...;vargs...)
 
-Index() = Index(IDType(0),1,Neither,TagSet(("",0)))
+Index() = Index(0,1,Neither,"",0)
 
 """
   Index(dim::Integer, tags=("",0))
@@ -58,10 +59,12 @@ Create an `Index` with a unique `id` and a tagset given by `tags`.
 Example: create a two dimensional index with tag `l`:
     Index(2, "l")
 """
-function Index(dim::Integer,tags=("",0))
-  ts = TagSet(tags)
-  return Index(rand(IDType),dim,Out,ts)
+function Index(dim::Integer;tags="",plev=0)
+  return Index(rand(IDType),dim,Neither,tags,plev)
 end
+
+
+Index(dim::Integer,tags::Union{AbstractString,TagSet}) = Index(dim; tags=tags)
 
 """
     id(i::Index)
@@ -81,7 +84,15 @@ space(i::Index) = i.space
     dir(i::Index)
 Obtain the direction of an Index (In or Out)
 """
-dir(i::Index) = i.dir
+Tensors.dir(i::Index) = i.dir
+
+"""
+    setdir(i::Index, dir::Arrow)
+Create a copy of Index i with the specified direction.
+"""
+function setdir(i::Index, dir::Arrow)
+  return Index(id(i),copy(space(i)),dir,copy(tags(i)),plev(i))
+end
 
 """
     tags(i::Index)
@@ -93,12 +104,7 @@ tags(i::Index) = i.tags
     plev(i::Index)
 Obtain the prime level of an Index
 """
-plev(i::Index) = plev(tags(i))
-
-# Overload for use in AbstractArray interface for Tensor
-#Base.length(i::Index) = dim(i)
-#Base.UnitRange(i::Index) = 1:dim(i)
-#Base.checkindex(::Type{Bool}, i::Index, val::Int64) = (val ≤ dim(i) && val ≥ 1)
+plev(i::Index) = i.plev
 
 """
 ==(i1::Index, i1::Index)
@@ -108,26 +114,35 @@ then the prime levels are compared, and finally the
 tags are compared.
 """
 function Base.:(==)(i1::Index,i2::Index)
-  return id(i1) == id(i2) && tags(i1) == tags(i2)
+  return id(i1) == id(i2) && tags(i1) == tags(i2) && plev(i1) == plev(i2)
 end
+
+# This is so that when IndexSets are converted
+# to Julia Base Sets, the hashing is done correctly
+function Base.hash(i::Index, h::UInt)
+  return hash((id(i),tags(i),plev(i)), h)
+end
+
 
 """
     copy(i::Index)
 Create a copy of index `i` with identical `id`, `dim`, `dir` and `tags`.
 """
-Base.copy(i::Index) = Index(id(i),space(i),dir(i),copy(tags(i)))
+Base.copy(i::Index) = Index(id(i),copy(space(i)),dir(i),copy(tags(i)),plev(i))
 
 """
-    sim(i::Index)
+  sim(i::Index; tags=tags(i), dir=dir(i))
 Similar to `copy(i::Index)` except `sim` will produce an `Index` with a new, unique `id` instead of the same `id`.
 """
-Tensors.sim(i::Index) = Index(rand(IDType),space(i),dir(i),copy(tags(i)))
+function Tensors.sim(i::Index; tags=copy(tags(i)), plev=plev(i), dir=dir(i))
+  return Index(rand(IDType),copy(space(i)),dir,tags,plev)
+end
 
 """
     dag(i::Index)
 Copy an index `i` and reverse it's direction
 """
-dag(i::Index) = Index(id(i),space(i),-dir(i),tags(i))
+Tensors.dag(i::Index) = Index(id(i),copy(space(i)),-dir(i),copy(tags(i)),plev(i))
 
 """
     isdefault(i::Index)
@@ -146,7 +161,36 @@ Example:
     hastags(i,"SpinHalf,Site") == true
     hastags(i,"Link") == false
 """
-hastags(i::Index, ts) = hastags(tags(i),ts)
+hastags(i::Index,
+        ts::Union{AbstractString,TagSet}) = hastags(tags(i),ts)
+
+hastags(ts::Union{AbstractString,TagSet}) = x->hastags(x,ts)
+
+"""
+    hasplev(i::Index,plev::Int)
+Check if an `Index` `i` has the provided prime level.
+
+Example:
+    i = Index(2; plev=2)
+    hasplev(i,2) == true
+    hastags(i,1) == false
+"""
+hasplev(i::Index, pl::Int) = plev(i)==pl
+
+hasplev(pl::Int) = x->hasplev(x,pl)
+
+"""
+    hasid(i::Index,id::IDType)
+Check if an `Index` `i` has the provided id.
+
+Example:
+    i = Index(2)
+    hasid(i,id(i)) == true
+    hasid(i,IDType(2)) == false
+"""
+hasid(ind::Index, i::IDType) = id(ind)==i
+
+hasid(i::IDType) = x->hasid(x,i)
 
 """
     settags(i::Index,ts)
@@ -162,12 +206,7 @@ Example:
     hastags(j,"Link") == true
     hastags(j,"n=4,Link") == true
 """
-function settags(i::Index, strts)
-  ts = TagSet(strts)
-  # By default, an Index has a prime level of 0
-  !hasplev(ts) && (ts = setprime(ts,0))
-  Index(id(i),space(i),dir(i),ts)
-end
+settags(i::Index, ts) = Index(id(i),copy(space(i)),dir(i),ts,plev(i))
 
 """
     addtags(i::Index,ts)
@@ -200,14 +239,14 @@ replacetags(i::Index, tsold, tsnew) = settags(i, replacetags(tags(i), tsold, tsn
 Return a copy of Index `i` with its
 prime level incremented by the amount `plinc`
 """
-prime(i::Index, plinc = 1) = settags(i, prime(tags(i), plinc))
+prime(i::Index, plinc=1) = setprime(i, plev(i)+plinc)
 
 """
     setprime(i::Index,plev)
 Return a copy of Index `i` with its
 prime level set to `plev`
 """
-setprime(i::Index, plev) = settags(i, setprime(tags(i), plev))
+setprime(i::Index, plev) = Index(id(i),copy(space(i)),dir(i),copy(tags(i)),plev)
 
 """
     noprime(i::Index)
@@ -228,17 +267,36 @@ function Base.iterate(i::Index,state::Int=1)
   return (state,state+1)
 end
 
+Tensors.outer(i::Index) = i
+
+function Tensors.outer(i1::Index,i2::Index; tags="")
+  return Index(dim(i1)*dim(i2),tags)
+end
+
+function primestring(plev)
+  if plev<0
+    return " (warning: prime level $plev is less than 0)"
+  end
+  if plev==0
+    return ""
+  elseif plev > 3
+    return "'$plev"
+  else
+    return "'"^plev
+  end
+end
+
 function Base.show(io::IO,
                    i::Index) 
   idstr = "$(id(i) % 1000)"
   if length(tags(i)) > 0
-    print(io,"(dim=$(space(i))|id=$(idstr)|$(tagstring(tags(i))))$(primestring(tags(i)))")
+    print(io,"(dim=$(space(i))|id=$(idstr)|\"$(tagstring(tags(i)))\")$(primestring(plev(i)))")
   else
-    print(io,"(dim=$(space(i))|id=$(idstr))$(primestring(tags(i)))")
+    print(io,"(dim=$(space(i))|id=$(idstr))$(primestring(plev(i)))")
   end
 end
 
-struct IndexVal{IndexT}
+struct IndexVal{IndexT<:Index}
   ind::IndexT
   val::Int
   function IndexVal(i::IndexT,n::Int) where {IndexT}
@@ -249,21 +307,33 @@ struct IndexVal{IndexT}
 end
 
 IndexVal() = IndexVal(Index(),1)
+IndexVal(iv::Pair{<:Index,Int}) = IndexVal(iv.first,iv.second)
+
+const PairIndexInt{IndexT} = Pair{IndexT,Int}
+const IndexValOrPairIndexInt{IndexT} = Union{IndexVal{IndexT},PairIndexInt{IndexT}}
+
+Base.convert(::Type{IndexVal},iv::Pair{<:Index,Int}) = IndexVal(iv)
+Base.convert(::Type{IndexVal{IndexT}},iv::Pair{IndexT,Int}) where {IndexT<:Index} = IndexVal(iv)
 
 Base.getindex(i::Index, j::Int) = IndexVal(i, j)
 #Base.getindex(i::Index, c::Colon) = [IndexVal(i, j) for j in 1:dim(i)]
 
 (i::Index)(n::Int) = IndexVal(i,n)
 
-val(iv::IndexVal) = iv.val
 ind(iv::IndexVal) = iv.ind
+val(iv::IndexVal) = iv.val
 
-Base.:(==)(i::Index,iv::IndexVal) = (i==ind(iv))
-Base.:(==)(iv::IndexVal,i::Index) = (i==iv)
+ind(iv::PairIndexInt) = iv.first
+val(iv::PairIndexInt) = iv.second
+
+Base.:(==)(i::Index,iv::IndexValOrPairIndexInt) = (i==ind(iv))
+Base.:(==)(iv::IndexValOrPairIndexInt,i::Index) = (i==iv)
 
 plev(iv::IndexVal) = plev(ind(iv))
 prime(iv::IndexVal,inc::Integer=1) = IndexVal(prime(ind(iv),inc),val(iv))
 Base.adjoint(iv::IndexVal) = IndexVal(adjoint(ind(iv)),val(iv))
+
+hasqns(::Index) = false
 
 Base.show(io::IO,iv::IndexVal) = print(io,ind(iv),"=$(val(iv))")
 
@@ -294,6 +364,7 @@ function HDF5.write(parent::Union{HDF5File,HDF5Group},
   write(g,"dim",dim(I))
   write(g,"dir",Int(dir(I)))
   write(g,"tags",tags(I))
+  write(g,"plev",plev(I))
 end
 
 function HDF5.read(parent::Union{HDF5File,HDF5Group},
@@ -307,5 +378,6 @@ function HDF5.read(parent::Union{HDF5File,HDF5Group},
   dim = read(g,"dim")
   dir = Arrow(read(g,"dir"))
   tags = read(g,"tags",TagSet)
-  return Index(id,dim,dir,tags)
+  plev = read(g,"plev")
+  return Index(id,dim,dir,tags,plev)
 end

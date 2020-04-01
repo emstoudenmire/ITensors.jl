@@ -96,11 +96,11 @@ digits(::Type{T},x...) where {T} = T(sum([x[length(x)-k+1]*10^(k-1) for k=1:leng
 
   @testset "Complex" begin
     A = ITensor(Complex,i,j)
-    @test store(A) isa Dense{ComplexF64}
+    @test store(A) isa Dense{Complex}
   end
 
   @testset "Random complex" begin
-    A = randomITensor(Complex,i,j)
+    A = randomITensor(ComplexF64,i,j)
     @test store(A) isa Dense{ComplexF64}
   end
 
@@ -118,7 +118,7 @@ end
   A = randomITensor(i,j)
   B = complex(A)
   for ii ∈ dim(i), jj ∈ dim(j)
-    @test complex(A[i(ii),j(jj)]) == B[i(ii),j(jj)]
+    @test complex(A[i=>ii,j=>jj]) == B[i=>ii,j=>jj]
   end
 end
 
@@ -137,6 +137,14 @@ end
   j = Index(2,"j")
   A = randomITensor(i,j)
   fill!(A, 1.0)
+  @test all(data(store(A)) .== 1.0)
+end
+
+@testset "fill! using broadcast" begin
+  i = Index(2,"i")
+  j = Index(2,"j")
+  A = randomITensor(i,j)
+  A .= 1.0
   @test all(data(store(A)) .== 1.0)
 end
 
@@ -278,18 +286,18 @@ end
   end
 end
 
-@testset "show" begin
-  i = Index(2,"i")
-  a = [1.0; 2.0]
-  A = ITensor(a,i)
-  s = split(sprint(show, A), '\n')
-  @test s[1] == "ITensor ord=1 " * sprint(show, i) * " "
-  @test s[2] == "Dense{Float64,Array{Float64,1}}"
-  @test s[3] == "Tensor{Float64,1,Dense{Float64,Array{Float64,1}},IndexSet{1}}"
-  @test s[4] == " 2-element"
-  @test s[5] == " 1.0"
-  @test s[6] == " 2.0"
-end
+#@testset "show" begin
+#  i = Index(2,"i")
+#  a = [1.0; 2.0]
+#  A = ITensor(a,i)
+#  s = split(sprint(show, A), '\n')
+#  @test s[1] == "ITensor ord=1 " * sprint(show, i) * " "
+#  @test s[2] == "Dense{Float64,Array{Float64,1}}"
+#  @test s[3] == "Tensor{Float64,1,Dense{Float64,Array{Float64,1}},IndexSet{1}}"
+#  @test s[4] == " 2-element"
+#  @test s[5] == " 1.0"
+#  @test s[6] == " 2.0"
+#end
 
 @testset "Test isapprox for ITensors" begin
   m,n = rand(0:20,2)
@@ -310,52 +318,59 @@ end
   s1 = Index(2,"Site,s=1")
   s2 = Index(2,"Site,s=2")
   l = Index(3,"Link")
+  ltmp = settags(l,"Temp")
   A1 = randomITensor(s1,l,l')
   A2 = randomITensor(s2,l',l'')
-  @testset "findindex(::ITensor,::String)" begin
-    @test s1==findindex(A1,"Site")
-    @test s1==findindex(A1,"s=1")
-    @test s1==findindex(A1,"s=1,Site")
-    @test l==findindex(A1,("Link",0))
-    @test l'==findindex(A1,("",1))
-    @test l'==findindex(A1,("Link",1))
-    @test s2==findindex(A2,"Site")
-    @test s2==findindex(A2,"s=2")
-    @test s2==findindex(A2,"Site")
-    @test s2==findindex(A2,("",0))
-    @test s2==findindex(A2,("s=2",0))
-    @test s2==findindex(A2,("Site",0))
-    @test s2==findindex(A2,("s=2,Site",0))
-    @test l'==findindex(A2,("",1))
-    @test l'==findindex(A2,("Link",1))
-    @test l''==findindex(A2,("",2))
-    @test l''==findindex(A2,("Link",2))
+  @testset "firstind(::ITensor,::String)" begin
+    @test s1==firstind(A1, "Site")
+    @test s1==firstind(A1, "s=1")
+    @test s1==firstind(A1, "s=1,Site")
+    @test l==firstind(A1; tags="Link", plev=0)
+    @test l'==firstind(A1; plev=1)
+    @test l'==firstind(A1; tags="Link", plev=1)
+    @test s2==firstind(A2, "Site")
+    @test s2==firstind(A2, "s=2")
+    @test s2==firstind(A2, "Site")
+    @test s2==firstind(A2, plev=0)
+    @test s2==firstind(A2; tags="s=2", plev=0)
+    @test s2==firstind(A2; tags="Site", plev=0)
+    @test s2==firstind(A2; tags="s=2,Site", plev=0)
+    @test l'==firstind(A2; plev=1)
+    @test l'==firstind(A2; tags="Link", plev=1)
+    @test l''==firstind(A2; plev=2)
+    @test l''==firstind(A2; tags="Link", plev=2)
   end
   @testset "addtags(::ITensor,::String,::String)" begin
-    s1u = addtags(s1,"u")
-    lu = addtags(l,"u")
+    s1u = addtags(s1, "u")
+    lu = addtags(l, "u")
 
-    A1u = addtags(A1,"u")
+    A1u = addtags(A1, "u")
     @test hasinds(A1u,s1u,lu,lu')
 
-    A1u = addtags(A1,"u","Link")
+    A1u = addtags(A1, "u", "Link")
     @test hasinds(A1u,s1,lu,lu')
 
-    A1u = addtags(A1,"u",("",0))
+    A1u = addtags(A1, "u"; tags="Link")
+    @test hasinds(A1u,s1,lu,lu')
+
+    A1u = addtags(A1, "u"; plev=0)
     @test hasinds(A1u,s1u,lu,l')
 
-    A1u = addtags(A1,"u",("Link",0))
+    A1u = addtags(A1, "u"; tags="Link", plev=0)
     @test hasinds(A1u,s1,lu,l')
 
-    A1u = addtags(A1,"u",("Link",1))
+    A1u = addtags(A1, "u"; tags="Link", plev=1)
     @test hasinds(A1u,s1,l,lu')
   end
   @testset "removetags(::ITensor,::String,::String)" begin
     A2r = removetags(A2,"Site")
     @test hasinds(A2r,removetags(s2,"Site"),l',l'')
 
-    A2r = removetags(A2,"Link",("",1))
+    A2r = removetags(A2,"Link";plev=1)
     @test hasinds(A2r,s2,removetags(l,"Link")',l'')
+
+    A2r = replacetags(A2,"Link","Temp";plev=1)
+    @test hasinds(A2r,s2,ltmp',l'')
   end
   @testset "replacetags(::ITensor,::String,::String)" begin
     s2tmp = replacetags(s2,"Site","Temp")
@@ -366,20 +381,6 @@ end
 
     A2r = replacetags(A2,"Link","Temp")
     @test hasinds(A2r,s2,ltmp',ltmp'')
-
-    A2r = replacetags(A2,"Link","Temp",("",1))
-    @test hasinds(A2r,s2,ltmp',l'')
-
-    A2r = replacetags(A2,("Link",2),("Temp",3))
-    @test hasinds(A2r,s2,l',ltmp''')
-
-    A2r = replacetags(A2,("",1),("",5))
-    @test hasinds(A2r,s2,prime(l,5),l'')
-
-    #In-place version
-    cA2 = copy(A2)
-    replacetags!(cA2,("",1),("",5))
-    @test hasinds(cA2,s2,prime(l,5),l'')
   end
   @testset "prime(::ITensor,::String)" begin
     A2p = prime(A2)
@@ -407,6 +408,32 @@ end
   end
 end
 
+@testset "ITensor other index operations" begin
+
+  s1 = Index(2,"Site,s=1")
+  s2 = Index(2,"Site,s=2")
+  l = Index(3,"Link")
+  A1 = randomITensor(s1,l,l')
+  A2 = randomITensor(s2,l',l'')
+
+  @testset "replaceind and replaceinds" begin
+    rA1 = replaceind(A1,s1,s2)
+    @test hasinds(rA1,s2,l,l')
+    @test hasinds(A1,s1,l,l')
+
+    replaceind!(A1,s1,s2)
+    @test hasinds(A1,s2,l,l')
+
+    rA2 = replaceinds(A2,(s2,l'),(s1,l))
+    @test hasinds(rA2,s1,l,l'')
+    @test hasinds(A2,s2,l',l'')
+
+    replaceinds!(A2,(s2,l'),(s1,l))
+    @test hasinds(A2,s1,l,l'')
+  end
+
+end #End "ITensor other index operations"
+
 @testset "Converting Real and Complex Storage" begin
 
   @testset "Add Real and Complex" begin
@@ -420,8 +447,8 @@ end
     @test typeof(S1.store) == Dense{ComplexF64,Vector{ComplexF64}}
     @test typeof(S2.store) == Dense{ComplexF64,Vector{ComplexF64}}
     for ii=1:dim(i),jj=1:dim(j)
-      @test S1[i(ii),j(jj)] ≈ TC[i(ii),j(jj)]+TR[i(ii),j(jj)]
-      @test S2[i(ii),j(jj)] ≈ TC[i(ii),j(jj)]+TR[i(ii),j(jj)]
+      @test S1[i=>ii,j=>jj] ≈ TC[i=>ii,j=>jj]+TR[i=>ii,j=>jj]
+      @test S2[i=>ii,j=>jj] ≈ TC[i=>ii,j=>jj]+TR[i=>ii,j=>jj]
     end
   end
 
@@ -438,10 +465,10 @@ end
   @testset "Set and get values with IndexVals" begin
     A = ITensor(SType,i,j,k)
     for ii ∈ 1:dim(i), jj ∈ 1:dim(j), kk ∈ 1:dim(k)
-      A[k(kk),j(jj),i(ii)] = digits(SType,ii,jj,kk)
+      A[k=>kk,j=>jj,i=>ii] = digits(SType,ii,jj,kk)
     end
     for ii ∈ 1:dim(i), jj ∈ 1:dim(j), kk ∈ 1:dim(k)
-      @test A[j(jj),k(kk),i(ii)]==digits(SType,ii,jj,kk)
+      @test A[j=>jj,k=>kk,i=>ii]==digits(SType,ii,jj,kk)
     end
     @test_throws MethodError A[1]
   end
@@ -452,24 +479,24 @@ end
     @test j==inds(permA)[2]
     @test i==inds(permA)[3]
     for ii ∈ 1:dim(i), jj ∈ 1:dim(j), kk ∈ 1:dim(k)
-      @test A[k(kk),i(ii),j(jj)]==permA[i(ii),j(jj),k(kk)]
+      @test A[k=>kk,i=>ii,j=>jj]==permA[i=>ii,j=>jj,k=>kk]
     end
     for ii ∈ 1:dim(i), jj ∈ 1:dim(j), kk ∈ 1:dim(k)
-      @test A[k(kk),i(ii),j(jj)]==permA[i(ii),j(jj),k(kk)]
+      @test A[k=>kk,i=>ii,j=>jj]==permA[i=>ii,j=>jj,k=>kk]
     end
     # TODO: I think this was doing slicing, but what is the output
     # of slicing an ITensor?
     #@testset "getindex and setindex with vector of IndexVals" begin
-    #    k_inds = [k(kk) for kk ∈ 1:dim(k)]
+    #    k_inds = [k=>kk for kk ∈ 1:dim(k)]
     #    for ii ∈ 1:dim(i), jj ∈ 1:dim(j)
-    #      @test A[k_inds,i(ii),j(jj)]==permA[i(ii),j(jj),k_inds...]
+    #      @test A[k_inds,i=>ii,j=>jj]==permA[i=>ii,j=>jj,k_inds...]
     #    end
     #    for ii ∈ 1:dim(i), jj ∈ 1:dim(j)
-    #        A[k_inds,i(ii),j(jj)]=collect(1:length(k_inds))
+    #        A[k_inds,i=>ii,j=>jj]=collect(1:length(k_inds))
     #    end
     #    permA = permute(A,k,j,i)
     #    for ii ∈ 1:dim(i), jj ∈ 1:dim(j)
-    #      @test A[k_inds,i(ii),j(jj)]==permA[i(ii),j(jj),k_inds...]
+    #      @test A[k_inds,i=>ii,j=>jj]==permA[i=>ii,j=>jj,k_inds...]
     #    end
     #end
   end
@@ -500,7 +527,7 @@ end
     B = randomITensor(SType,k,i,j)
     C = A+B
     for ii ∈ 1:dim(i), jj ∈ 1:dim(j), kk ∈ 1:dim(k)
-      @test C[i(ii),j(jj),k(kk)]==A[j(jj),i(ii),k(kk)]+B[i(ii),k(kk),j(jj)]
+      @test C[i=>ii,j=>jj,k=>kk]==A[j=>jj,i=>ii,k=>kk]+B[i=>ii,k=>kk,j=>jj]
     end
     @test array(permute(C,i,j,k))==array(permute(A,i,j,k))+array(permute(B,i,j,k))
   end
@@ -528,7 +555,7 @@ end
 
     @testset "Test QR decomposition of an ITensor" begin
       Q,R,q = qr(A,(i,l))
-      q = commonindex(Q,R)
+      q = commonind(Q,R)
       @test A≈Q*R
       @test Q*dag(prime(Q,q))≈δ(SType,q,q') atol=1e-14
     end
@@ -556,7 +583,7 @@ end
       is = IndexSet(i,j)
       T = randomITensor(is...,prime(is)...)
       T = T + swapprime(dag(T),0,1)
-      U,D,spec,u = eigenHermitian(T)
+      U,D,spec,u = eigen(T; ishermitian=true)
       @test T ≈ U*D*prime(dag(U))
       UUᴴ =  U*prime(dag(U),u)
       @test UUᴴ ≈ δ(u,u') atol=1e-14

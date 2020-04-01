@@ -1,3 +1,7 @@
+## Possible Bugs
+
+- is new permutedims!! in blocksparsetensor.jl
+  defined fermionically?
 
 ## Roadmap
 

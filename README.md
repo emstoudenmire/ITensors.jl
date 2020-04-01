@@ -19,6 +19,24 @@ the DMRG algorithm.
 
 Development of ITensor is supported by the Flatiron Institute, a division of the Simons Foundation.
 
+## Steps in Install Pre-Release Version
+
+1. Install the latest version of Julia: https://julialang.org/downloads/
+
+2. Run the `julia` command to begin an interactive Julia session (entering the so-called REPL). 
+
+3. Type `]` on your keyboard to enter Julia's interactive package manager.
+
+4. Run the command 
+
+       add https://github.com/ITensor/ITensors.jl
+    
+   The package system will update itself, then install some dependencies before finally installing ITensors.jl.
+
+5. Hit the backspace key to go back to the normal interactive Julia prompt, or type Ctrl+D to exit the Julia REPL.
+
+6. You can now do `using ITensors` to use the ITensor library in an interactive session, or run Julia code files (.jl files) which use ITensor, with some examples given below and in our examples folder. The test folder also has many examples of ITensor code you can run.
+
 ## Code Examples
 
 ### Basic Overview
@@ -38,10 +56,11 @@ let
   A = ITensor(i,j,k)
   B = ITensor(j,l)
 
-  A[i(1),j(1),k(1)] = 11.1
-  A[i(2),j(1),k(2)] = -21.2
-  A[k(1),i(3),j(1)] = 31.1  # can provide Index values in any order
+  A[i=>1,j=>1,k=>1] = 11.1
+  A[i=>2,j=>1,k=>2] = -21.2
+  A[k=>1,i=>3,j=>1] = 31.1  # can provide Index values in any order
   # ...
+  A[k(1),i(3),j(1)] = 31.1  # alternative notation
 
   # Contract over shared index j
   C = A * B
@@ -74,7 +93,7 @@ let
   i = Index(10)           # index of dimension 10
   j = Index(20)           # index of dimension 20
   M = randomITensor(i,j)  # random matrix, indices i,j
-  U,S,V = svd(M,i)        # compute SVD
+  U,S,V = svd(M,i)        # compute SVD with i as row index
   @show norm(M - U*S*V)   # ≈ 0.0
 end
 ```
@@ -99,7 +118,7 @@ let
   k = Index(4,"k")
   l = Index(4,"l")
   T = randomITensor(i,j,k,l)
-  U,S,V = svd(T,i,k)
+  U,S,V = svd(T,i,k)   # compute SVD with (i,k) as row indices (indices of U)
   @show hasinds(U,i,k) # == true
   @show hasinds(V,j,l) # == true
   @show norm(T - U*S*V)   # ≈ 0.0
@@ -161,18 +180,19 @@ the behavior of quantum systems.
 using ITensors
 
 let
-  # Create 100 spin-one (dimension 3) indices
+  # Create 100 spin-one indices
   N = 100
   sites = siteinds("S=1",N)
 
   # Input operator terms which define 
   # a Hamiltonian matrix, and convert
   # these terms to an MPO tensor network
+  # (here we make the 1D Heisenberg model)
   ampo = AutoMPO()
   for j=1:N-1
-    add!(ampo,"Sz",j,"Sz",j+1)
-    add!(ampo,0.5,"S+",j,"S-",j+1)
-    add!(ampo,0.5,"S-",j,"S+",j+1)
+    ampo +=     ("Sz",j,"Sz",j+1)
+    ampo += (0.5,"S+",j,"S-",j+1)
+    ampo += (0.5,"S-",j,"S+",j+1)
   end
   H = MPO(ampo,sites)
 

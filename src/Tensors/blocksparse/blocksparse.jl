@@ -19,50 +19,42 @@ struct BlockSparse{ElT,VecT,N} <: TensorStorage{ElT}
   data::VecT
   blockoffsets::BlockOffsets{N}  # Block number-offset pairs
   function BlockSparse(data::VecT,
-                       blockoffsets::BlockOffsets{N}) where {VecT<:AbstractVector{ElT},N} where {ElT}
-    # TODO: make this a debug check?
-    check_blocks_sorted(blockoffsets)
+                       blockoffsets::BlockOffsets{N}; sorted=true) where {VecT<:AbstractVector{ElT},N} where {ElT}
+    sorted && check_blocks_sorted(blockoffsets)
     new{ElT,VecT,N}(data,blockoffsets)
   end
 end
 
 function BlockSparse(::Type{ElT},
                      blockoffsets::BlockOffsets,
-                     dim::Integer) where {ElT<:Number}
-  return BlockSparse(zeros(ElT,dim),blockoffsets)
+                     dim::Integer; vargs...) where {ElT<:Number}
+  return BlockSparse(zeros(ElT,dim),blockoffsets; vargs...)
 end
 
 function BlockSparse(::Type{ElT},
                      ::UndefInitializer,
                      blockoffsets::BlockOffsets,
-                     dim::Integer) where {ElT<:Number}
-  return BlockSparse(Vector{Float64}(undef,dim),blockoffsets)
+                     dim::Integer; vargs...) where {ElT<:Number}
+  return BlockSparse(Vector{ElT}(undef,dim),blockoffsets; vargs...)
 end
 
 BlockSparse(blockoffsets::BlockOffsets,
-            dim::Integer) = BlockSparse(Float64,blockoffsets,dim)
+            dim::Integer; vargs...) = BlockSparse(Float64,blockoffsets,dim; vargs...)
 
 BlockSparse(::UndefInitializer,
             blockoffsets::BlockOffsets,
-            dim::Integer) = BlockSparse(Float64,undef,blockoffsets,dim)
+            dim::Integer; vargs...) = BlockSparse(Float64,undef,blockoffsets,dim; vargs...)
 
 #function BlockSparse{ElR}(data::VecT,offsets) where {ElR,VecT<:AbstractVector{ElT}} where {ElT}
 #  ElT == ElR ? BlockSparse(data,offsets) : BlockSparse(ElR.(data),offsets)
 #end
 #BlockSparse{ElT}() where {ElT} = BlockSparse(ElT[],BlockOffsets())
 
-blockoffsets(D::BlockSparse) = D.blockoffsets
-nnzblocks(D::BlockSparse) = length(blockoffsets(D))
-Base.length(D::BlockSparse) = length(data(D))
-Base.size(D::BlockSparse) = (length(D),)
-nnz(D::BlockSparse) = length(D)
-offset(D::BlockSparse,block::Block) = offset(blockoffsets(D),block)
-offset(D::BlockSparse,n::Int) = offset(blockoffsets(D),n)
-
-function Base.similar(D::BlockSparse{ElT}) where {ElT}
-  return BlockSparse{ElT}(similar(data(D)),blockoffsets(D))
+function Base.similar(D::BlockSparse)
+  return BlockSparse(similar(data(D)),blockoffsets(D))
 end
 
+# TODO: test this function
 Base.similar(D::BlockSparse,
              ::Type{ElT}) where {ElT} = BlockSparse(similar(data(D),ElT),
                                                     copy(blockoffsets(D)))
@@ -80,6 +72,13 @@ end
 # TODO: this could be a generic TensorStorage function
 Base.complex(D::BlockSparse{T}) where {T} = BlockSparse{complex(T)}(complex(data(D)),
                                                                     blockoffsets(D))
+Base.conj(D::BlockSparse{<: Real}) = D
+Base.conj(D::BlockSparse) = BlockSparse(conj(data(D)), copy(blockoffsets(D)))
+
+function scale!(D::BlockSparse,α::Number)
+  scale!(data(D),α)
+  return D
+end
 
 Base.eltype(::BlockSparse{T}) where {T} = eltype(T)
 # This is necessary since for some reason inference doesn't work
@@ -89,15 +88,27 @@ Base.eltype(::Type{BlockSparse{T}}) where {T} = eltype(T)
 
 dense(::Type{<:BlockSparse{ElT,VecT}}) where {ElT,VecT} = Dense{ElT,VecT}
 
-function Base.promote_rule(::Type{BlockSparse{T1}},
-                           ::Type{BlockSparse{T2}}) where {T1,T2}
-  return BlockSparse{promote_type(T1,T2)}
+function Base.promote_rule(::Type{<:BlockSparse{ElT1,VecT1,N}},
+                           ::Type{<:BlockSparse{ElT2,VecT2,N}}) where {ElT1,ElT2,VecT1,VecT2,N}
+  return BlockSparse{promote_type(ElT1,ElT2),promote_type(VecT1,VecT2),N}
 end
 
-function Base.convert(::Type{BlockSparse{R}},
-                      D::BlockSparse) where {R}
-  return BlockSparse{R}(convert(Vector{R},data(D)),
-                        blockoffsets(D))
+function Base.promote_rule(::Type{<:BlockSparse{ElT1,VecT1,N1}},
+                           ::Type{<:BlockSparse{ElT2,VecT2,N2}}) where {ElT1,ElT2,VecT1,VecT2,N1,N2}
+  return BlockSparse{promote_type(ElT1,ElT2),promote_type(VecT1,VecT2),NR} where {NR}
+end
+
+function Base.promote_rule(::Type{<:BlockSparse{ElT1,Vector{ElT1},N1}},
+                           ::Type{ElT2}) where {ElT1,ElT2<:Number,N1}
+  ElR = promote_type(ElT1,ElT2)
+  VecR = Vector{ElR}
+  return BlockSparse{ElR,VecR,N1}
+end
+
+function Base.convert(::Type{<:BlockSparse{ElR,VecR,N}},
+                      D::BlockSparse{ElD,VecD,N}) where {ElR,VecR,N,ElD,VecD}
+  return BlockSparse(convert(VecR,data(D)),
+                     blockoffsets(D))
 end
 
 function Base.:*(D::BlockSparse,x::Number)
@@ -130,8 +141,8 @@ function blockdim(D::BlockSparse,
   return blockdim(D,pos)
 end
 
-findblock(T::BlockSparse{ElT,VecT,N},
-          block::Block{N}) where {ElT,VecT,N} = findblock(blockoffsets(T),block)
+findblock(D::BlockSparse{<:Number,<:AbstractVector,N},
+          block::Block{N}; vargs...) where {N} = findblock(blockoffsets(D),block; vargs...)
 
 """
 isblocknz(T::BlockSparse,

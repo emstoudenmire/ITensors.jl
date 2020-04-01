@@ -6,7 +6,8 @@ using Random,
       StaticArrays,
       TimerOutputs,
       Reexport,
-      HDF5
+      HDF5,
+      KrylovKit
 
 # TODO: move imports to individual files
 import Base.adjoint,
@@ -66,6 +67,7 @@ include("Tensors/Tensors.jl")
 #
 include("smallstring.jl")
 include("readwrite.jl")
+include("not.jl")
 include("tagset.jl")
 include("arrow.jl")
 include("index.jl")
@@ -103,8 +105,11 @@ include("physics/tag_types.jl")
 include("physics/lattices.jl")
 include("physics/site_types/spinhalf.jl")
 include("physics/site_types/spinone.jl")
+include("physics/site_types/fermion.jl")
 include("physics/site_types/electron.jl")
 include("physics/site_types/tj.jl")
 include("physics/autompo.jl")
+
+include("developer_tools.jl")
 
 end # module ITensors

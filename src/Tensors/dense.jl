@@ -6,7 +6,6 @@ export Dense,
        contract,
        outer,
        read,
-       scale!,
        permutedims!!,
        write,
        ⊗
@@ -17,9 +16,17 @@ export Dense,
 
 struct Dense{ElT,VecT<:AbstractVector} <: TensorStorage{ElT}
   data::VecT
-  function Dense(data::VecT) where {VecT<:AbstractVector{ElT}} where {ElT}
+  function Dense{ElT,VecT}(data) where {ElT,VecT<:AbstractVector{ElT}}
     return new{ElT,VecT}(data)
   end
+end
+
+function Dense(data::VecT) where {VecT<:AbstractVector{ElT}} where {ElT}
+  return Dense{ElT,VecT}(data)
+end
+
+function Dense{ElR}(data::AbstractVector{ElT}) where {ElR,ElT}
+  ElT == ElR ? Dense(data) : Dense(ElR.(data))
 end
 
 Dense{ElT}(dim::Integer) where {ElT} = Dense(zeros(ElT,dim))
@@ -37,19 +44,12 @@ Dense(::Type{ElT},
 
 Dense(::UndefInitializer,dim::Integer) = Dense(Float64,undef,dim)
 
-function Dense{ElR}(data::VecT) where {ElR,VecT<:AbstractVector{ElT}} where {ElT}
-  ElT == ElR ? Dense(data) : Dense(ElR.(data))
-end
-
 Dense{ElT}() where {ElT} = Dense(ElT[])
 Dense(::Type{ElT}) where {ElT} = Dense{ElT}()
 
-Base.length(D::Dense) = length(data(D))
-Base.size(D::Dense) = size(data(D))
+Base.copy(D::Dense) = Dense(copy(data(D)))
 
-# Functions to make Dense storage act like a vector
-Base.@propagate_inbounds Base.getindex(D::Dense,i::Integer) = data(D)[i]
-Base.@propagate_inbounds Base.setindex!(D::Dense,v,i::Integer) = (data(D)[i] = v)
+Base.complex(::Type{Dense{ElT,Vector{ElT}}}) where {ElT} = Dense{complex(ElT),Vector{complex(ElT)}}
 
 Base.similar(D::Dense) = Dense(similar(data(D)))
 
@@ -57,23 +57,9 @@ Base.similar(D::Dense,length::Int) = Dense(similar(data(D),length))
 Base.similar(::Type{<:Dense{ElT,VecT}},length::Int) where {ElT,VecT} = Dense(similar(VecT,length))
 
 Base.similar(D::Dense,::Type{T}) where {T<:Number} = Dense(similar(data(D),T))
-Base.copy(D::Dense) = Dense(copy(data(D)))
-Base.copyto!(D1::Dense,D2::Dense) = copyto!(data(D1),data(D2))
-
-Base.fill!(D::Dense,v) = fill!(data(D),v)
 
 # TODO: should this do something different for SubArray?
 Base.zeros(::Type{<:Dense{ElT}},dim::Int) where {ElT} = Dense{ElT}(dim)
-
-# convert to complex
-# TODO: this could be a generic TensorStorage function
-Base.complex(D::Dense) = Dense(complex(data(D)))
-
-Base.eltype(::Dense{ElT}) where {ElT} = ElT
-# This is necessary since for some reason inference doesn't work
-# with the more general definition (eltype(Nothing) === Any)
-Base.eltype(::Dense{Nothing}) = Nothing
-Base.eltype(::Type{<:Dense{ElT}}) where {ElT} = ElT
 
 function Base.promote_rule(::Type{<:Dense{ElT1,VecT1}},
                            ::Type{<:Dense{ElT2,VecT2}}) where {ElT1,VecT1,
@@ -104,6 +90,7 @@ end
 Base.convert(::Type{<:Dense{ElR,VecR}},
              D::Dense) where {ElR,VecR} = Dense(convert(VecR,data(D)))
 
+# Make generic to all storage types?
 Base.:*(D::Dense,x::Number) = Dense(x*data(D))
 Base.:*(x::Number,D::Dense) = D*x
 
@@ -154,8 +141,14 @@ Tensor(::UndefInitializer,
 Tensor(::UndefInitializer,
        inds::Int...) = DenseTensor(undef,inds...)
 
+Tensor(A::Array{<:Number,N},inds::Dims{N}) where {N} = Tensor(Dense(vec(A)),inds)
+
 # Basic functionality for AbstractArray interface
 Base.IndexStyle(::Type{<:DenseTensor}) = IndexLinear()
+
+# Override CartesianIndices iteration to iterate
+# linearly through the Dense storage (faster)
+Base.iterate(T::DenseTensor,args...) = iterate(store(T),args...)
 
 function Base.similar(::Type{<:DenseTensor{ElT}},
                       inds) where {ElT}
@@ -178,7 +171,60 @@ Base.similar(T::DenseTensor,inds) = similar(typeof(T),inds)
 # To fix method ambiguity with similar(::AbstractArray,::Tuple)
 Base.similar(T::DenseTensor,inds::Dims) = similar(typeof(T),inds)
 
+#
+# Single index
+#
+
+Base.@propagate_inbounds function _getindex(T::DenseTensor{<:Number,N},
+                                            I::CartesianIndex{N}) where {N}
+  return store(T)[@inbounds LinearIndices(T)[CartesianIndex(I)]]
+end
+
+Base.@propagate_inbounds function Base.getindex(T::DenseTensor{<:Number,N},
+                                                I::Vararg{Int,N}) where {N}
+  return _getindex(T,CartesianIndex(I))
+end
+
+Base.@propagate_inbounds function Base.getindex(T::DenseTensor{<:Number,N},
+                                                I::CartesianIndex{N}) where {N}
+  return _getindex(T,I)
+end
+
+Base.@propagate_inbounds function _setindex!(T::DenseTensor{<:Number,N},
+                                             x::Number,
+                                             I::CartesianIndex{N}) where {N}
+  store(T)[@inbounds LinearIndices(T)[CartesianIndex(I)]] = x
+  return T
+end
+
+Base.@propagate_inbounds function Base.setindex!(T::DenseTensor{<:Number,N},
+                                                 x::Number,
+                                                 I::Vararg{Int,N}) where {N}
+  _setindex!(T,x,CartesianIndex(I))
+  return T
+end
+
+Base.@propagate_inbounds function Base.setindex!(T::DenseTensor{<:Number,N},
+                                                 x::Number,
+                                                 I::CartesianIndex{N}) where {N}
+  _setindex!(T,x,I)
+  return T
+end
+
+#
+# Linear indexing
+#
+
+Base.@propagate_inbounds Base.getindex(T::DenseTensor,i::Int) = store(T)[i]
+
+Base.@propagate_inbounds Base.setindex!(T::DenseTensor,v,i::Int) = (store(T)[i] = v; T)
+
+#
 # Slicing
+# TODO: this doesn't allow colon right now
+# Create a DenseView that stores a Dense and an offset?
+#
+
 Base.@propagate_inbounds function _getindex(T::DenseTensor{ElT,N},
                                             I::CartesianIndices{N}) where {ElT,N}
   storeR = Dense(vec(@view array(T)[I]))
@@ -186,65 +232,9 @@ Base.@propagate_inbounds function _getindex(T::DenseTensor{ElT,N},
   return Tensor(storeR,indsR)
 end
 
-# Get single index
-Base.@propagate_inbounds function _getindex(T::DenseTensor{ElT,N},
-                                            I::CartesianIndex{N}) where {ElT,N}
-  return store(T)[LinearIndices(T)[CartesianIndex(I)]]
-end
-
-# Slicing (allow mixture of ranges and integers)
 Base.@propagate_inbounds function Base.getindex(T::DenseTensor{ElT,N},
                                                 I...) where {ElT,N}
   return _getindex(T,CartesianIndices(I))
-end
-
-Base.@propagate_inbounds function Base.getindex(T::DenseTensor{ElT,N},
-                                                I::CartesianIndex{N}) where {ElT,N}
-  return _getindex(T,I)
-end
-
-Base.@propagate_inbounds function Base.getindex(T::DenseTensor{ElT,N},
-                                                I::Vararg{Int,N}) where {ElT,N}
-  return _getindex(T,CartesianIndex(I))
-end
-
-Base.@propagate_inbounds Base.getindex(T::DenseTensor,i::Int) = store(T)[i]
-
-Base.@propagate_inbounds Base.setindex!(T::DenseTensor,v,i::Int) = (store(T)[i] = v)
-
-Base.fill!(T::DenseTensor,v) = fill!(store(T),v)
-
-# How does Julia map from IndexCartesian to IndexLinear?
-#Base.getindex(T::DenseTensor{<:Number,N},
-#              i::Vararg{Int,N}) where {N} = 
-#store(T)[sum(i.*strides(T))+1-sum(strides(T))]
-#Base.setindex!(T::DenseTensor{<:Number,N},
-#               v,i::Vararg{Int,N}) where {N} = 
-#(store(T)[sum(i.*strides(T))+1-sum(strides(T))] = v)
-
-# Get the specified value on the diagonal
-function getdiag(T::DenseTensor{<:Number,N},ind::Int) where {N}
-  return T[CartesianIndex(ntuple(_->ind,Val(N)))]
-end
-
-# Set the specified value on the diagonal
-function setdiag!(T::DenseTensor{<:Number,N},val,ind::Int) where {N}
-  T[CartesianIndex(ntuple(_->ind,Val(N)))] = val
-end
-
-# This is for BLAS/LAPACK
-Base.strides(T::DenseTensor) = strides(inds(T))
-
-# Needed for passing Tensor{T,2} to BLAS/LAPACK
-function Base.unsafe_convert(::Type{Ptr{ElT}},
-                             T::DenseTensor{ElT}) where {ElT}
-  return Base.unsafe_convert(Ptr{ElT},data(store(T)))
-end
-
-# Convert a Dense Tensor to a Tensor with the specified storage
-function Base.convert(::Type{<:Tensor{<:Any,<:Any,StoreR}},
-                      T::DenseTensor) where {StoreR}
-  return Tensor(convert(StoreR,store(T)),inds(T))
 end
 
 # Reshape a DenseTensor using the specified dimensions
@@ -253,11 +243,13 @@ function Base.reshape(T::DenseTensor,dims)
   dim(T)==dim(dims) || error("Total new dimension must be the same as the old dimension")
   return Tensor(store(T),dims)
 end
+
 # This version fixes method ambiguity with AbstractArray reshape
 function Base.reshape(T::DenseTensor,dims::Dims)
   dim(T)==dim(dims) || error("Total new dimension must be the same as the old dimension")
   return Tensor(store(T),dims)
 end
+
 function Base.reshape(T::DenseTensor,dims::Int...)
   return Tensor(store(T),tuple(dims...))
 end
@@ -265,8 +257,6 @@ end
 # Create an Array that is a view of the Dense Tensor
 # Useful for using Base Array functions
 array(T::DenseTensor) = reshape(data(store(T)),dims(inds(T)))
-matrix(T::DenseTensor{<:Number,2}) = array(T)
-vector(T::DenseTensor{<:Number,1}) = array(T)
 
 function Base.Array{ElT,N}(T::DenseTensor{ElT,N}) where {ElT,N}
   return copy(array(T))
@@ -282,14 +272,6 @@ function Base.permutedims!(R::DenseTensor{<:Number,N},
                            perm::NTuple{N,Int}) where {N}
   permutedims!(array(R),array(T),perm)
   return R
-end
-
-function scale!(T::DenseTensor,
-                α::Number)
-  A = array(T)
-  # This is faster than A .*= α
-  rmul!(A,α)
-  return T
 end
 
 function apply!(R::DenseTensor,
@@ -485,9 +467,6 @@ function contract!!(R::Tensor{<:Number,NR},
   return R
 end
 
-# TODO: move to tensor.jl?
-Base.copyto!(R::Tensor,T::Tensor) = copyto!(store(R),store(T))
-
 # Move to tensor.jl? Overload this function
 # for immutable storage types
 function _contract!!(R::Tensor,labelsR,
@@ -497,20 +476,41 @@ function _contract!!(R::Tensor,labelsR,
   return R
 end
 
-function contract!(R::DenseTensor,
+function contract!(R::DenseTensor{<:Number,NR},
                    labelsR,
-                   T1::DenseTensor,
+                   T1::DenseTensor{ElT1,N1},
                    labelsT1,
-                   T2::DenseTensor,
+                   T2::DenseTensor{ElT2,N2},
                    labelsT2,
-                   α::Number=1,β::Number=0)
+                   α::Number=1,β::Number=0) where {ElT1,ElT2,N1,N2,NR}
+  if N1+N2==NR
+    outer!(R,T1,T2)
+    labelsRp = tuplecat(labelsT1,labelsT2)
+    perm = getperm(labelsR,labelsRp)
+    if !is_trivial_permutation(perm)
+      permutedims!(R,copy(R),perm)
+    end
+    return R
+  end
+
   props = ContractionProperties(labelsT1,labelsT2,labelsR)
   compute_contraction_properties!(props,T1,T2,R)
 
-  # We do type promotion here for BLAS (to ensure
-  # we contract DenseComplex*DenseComplex)
-  if storetype(T1) !== storetype(T2)
-    T1,T2 = promote(T1,T2)
+  if ElT1 != ElT2
+    # TODO: use promote instead
+    # T1,T2 = promote(T1,T2)
+
+    ElR = promote_type(ElT1,ElT2)
+    if ElT1 != ElR
+      # TODO: get this working
+      # T1 = ElR.(T1)
+      T1 = one(ElR) * T1
+    end
+    if ElT2 != ElR
+      # TODO: get this working
+      # T2 = ElR.(T2)
+      T2 = one(ElR) * T2
+    end
   end
 
   _contract!(R,T1,T2,props,α,β)
@@ -650,21 +650,6 @@ function LinearAlgebra.svd(T::DenseTensor{<:Number,N,IndsT},
   return U,S,V,spec
 end
 
-# eigendecomposition of an order-n tensor according to 
-# positions Lpos and Rpos
-function eigenHermitian(T::DenseTensor{<:Number,N,IndsT},
-                        Lpos::NTuple{NL,Int},
-                        Rpos::NTuple{NR,Int};
-                        kwargs...) where {N,IndsT,NL,NR}
-  M = permute_reshape(T,Lpos,Rpos)
-  UM,D,spec = eigenHermitian(M;kwargs...)
-  u = ind(UM,2)
-  Linds = similar_type(IndsT,Val{NL})(ntuple(i->inds(T)[Lpos[i]],Val(NL)))
-  Uinds = push(Linds,u)
-  U = reshape(UM,Uinds)
-  return U,D,spec
-end
-
 # qr decomposition of an order-n tensor according to 
 # positions Lpos and Rpos
 function LinearAlgebra.qr(T::DenseTensor{<:Number,N,IndsT},
@@ -754,19 +739,20 @@ function HDF5.read(parent::Union{HDF5File,HDF5Group},
   return Dense{ElT}(data)
 end
 
-function Base.summary(io::IO,
-                      T::DenseTensor{ElT,N}) where {ElT,N}
-  println(io,typeof(T))
-  println(io," ",Base.dims2string(dims(T)))
-end
-
-print_tensor(io::IO,T::DenseTensor) = Base.print_array(io,T)
-print_tensor(io::IO,T::DenseTensor{<:Number,1}) = Base.print_array(io,reshape(T,(dim(T),1)))
+#function Base.summary(io::IO,
+#                      T::Tensor)
+#  println(io,typeof(T))
+#  println(io," ",Base.dims2string(dims(T)))
+#  for (dim,ind) in enumerate(inds(T))
+#    println(io,"Dim $dim: ",ind)
+#  end
+#end
 
 function Base.show(io::IO,
                    mime::MIME"text/plain",
                    T::DenseTensor)
   summary(io,T)
+  println(io)
   print_tensor(io,T)
   println(io)
 end
