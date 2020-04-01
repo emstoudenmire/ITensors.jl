@@ -625,10 +625,6 @@ end
 # May not need this to be part of Tensors
 permfactor(p,block::NTuple{N,Int},inds) where {N} = 1.0
 
-#function scale_by_permfactor!(B,perm,block::NTuple{N,Int},inds) where {N}
-#  # intentionally left blank
-#  # can be overridden for special inds types by calling library
-#end
 
 # TODO: handle case where:
 # f(zero(ElR),zero(ElT)) != promote_type(ElR,ElT)
@@ -643,6 +639,17 @@ function permutedims!!(R::BlockSparseTensor{ElR,N},
   copyto!(RR,R)
   permutedims!(RR,T,perm,f)
   return RR
+end
+
+function scale_by_permfactor!(T::BlockSparseTensor{<:Number,N},
+                              perm::NTuple{N,Int},
+                              inds) where {N}
+  for (blockT,_) in blockoffsets(T)
+    Tblock = blockview(T,blockT)
+    pfac = permfactor(perm,blockT,inds)
+    if pfac != 1.0
+    end
+  end
 end
 
 function Base.permutedims!(R::BlockSparseTensor{<:Number,N},
@@ -836,7 +843,7 @@ function contract!(R::BlockSparseTensor{<:Number,NR},
   already_written_to = fill(false,nnzblocks(R))
   # In R .= α .* (T1 * T2) .+ β .* R
   for (pos1,pos2,posR) in contraction_plan
-    @show (pos1,pos2,posR)
+    #@show (pos1,pos2,posR)
     bT1 = block(blockoffsets(T1)[pos1])
     bT2 = block(blockoffsets(T2)[pos2])
     bR = block(blockoffsets(R)[posR])
