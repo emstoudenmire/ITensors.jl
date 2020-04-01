@@ -3,6 +3,8 @@
 - is new permutedims!! in blocksparsetensor.jl
   defined fermionically?
 
+- does dag permute indices?
+
 ## Roadmap
 
 0. isfermionic for IndexVal
