@@ -26,14 +26,38 @@ end
 
 isfermionic(qv::QNVal) = (modulus(qv) < 0)
 
-#function isfermionic(qn::QN)
-#  for qv in qn
-#    isfermionic(qv) && return true
-#  end
-#  return false
-#end
+function isfermionic(qn::QN)
+  for qv in qn
+    isfermionic(qv) && return true
+  end
+  return false
+end
  
 #isfermionic(iv::IndexVal) = isfermionic(qn(ind(iv),val(iv)))
+
+has_fermionic_sectors(i::Index) = false
+
+function has_fermionic_sectors(i::QNIndex)
+  for b=1:nblocks(i)
+    if isfermionic(qn(i,b))
+      return true
+    end
+  end
+  return false
+end
+
+has_fermionic_sectors(is::IndexSet) = false
+
+function has_fermionic_sectors(is::QNIndexSet)
+  for i in is
+    for b=1:nblocks(i)
+      if isfermionic(qn(i,b))
+        return true
+      end
+    end
+  end
+  return false
+end
 
 """
     fparity(qn::QN)
