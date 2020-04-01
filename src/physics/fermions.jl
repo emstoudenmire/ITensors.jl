@@ -97,18 +97,18 @@ end
 function Tensors.compute_alpha(labelsR,blockR,indsR::IndexSet,
                                labelsT1,blockT1,indsT1::IndexSet,
                                labelsT2,blockT2,indsT2::IndexSet)
-    @show labelsT1
-    @show labelsT2
-    @show labelsR
+    #@show labelsT1
+    #@show labelsT2
+    #@show labelsR
     
     orig_labelsT1 = [l for l in labelsT1]
     orig_labelsT2 = [l for l in labelsT2]
     NR = length(labelsR)
 
     nlabelsT1 = sort(orig_labelsT1;rev=true)
-    @show nlabelsT1
+    #@show nlabelsT1
     nlabelsT2 = sort(orig_labelsT2)
-    @show nlabelsT2
+    #@show nlabelsT2
 
     orig_labelsR = zeros(Int,NR)
     u = 1
@@ -118,35 +118,35 @@ function Tensors.compute_alpha(labelsR,blockR,indsR::IndexSet,
         u += 1
       end
     end
-    @show orig_labelsR
+    #@show orig_labelsR
 
     permT1 = getperm(tuple(nlabelsT1...),tuple(orig_labelsT1...))
-    @show permT1
+    #@show permT1
     permT2 = getperm(tuple(nlabelsT2...),tuple(orig_labelsT2...))
-    @show permT2
+    #@show permT2
     permR = getperm(tuple(labelsR...),tuple(orig_labelsR...))
-    @show permR
+    #@show permR
 
     alpha1 = Tensors.permfactor(permT1,blockT1,indsT1)
     alpha2 = Tensors.permfactor(permT2,blockT2,indsT2)
     alphaR = Tensors.permfactor(permR,blockR,indsR)
-    @show alpha1
-    @show alpha2
-    @show alphaR
+    #@show alpha1
+    #@show alpha2
+    #@show alphaR
 
     alpha_arrows = 1
     for n in 1:length(indsT1)
       l = orig_labelsT1[n]
       i = indsT1[n]
       qi = qn(i,blockT1[n])
-      @show (n,l,i)
-      @show qi
+      #@show (n,l,i)
+      #@show qi
       if l < 0 && dir(i)==Out && fparity(qi)==1
         alpha_arrows *= -1
       end
     end
-    @show alpha_arrows
-    println("\n")
+    #@show alpha_arrows
+    #println("\n")
 
     return alpha1*alpha2*alphaR*alpha_arrows
 end
