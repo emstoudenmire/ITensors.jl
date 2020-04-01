@@ -599,6 +599,11 @@ LinearAlgebra.norm(T::ITensor) = norm(tensor(T))
 
 function Tensors.dag(T::ITensor)
   TT = conj(tensor(T))
+  if has_fermionic_sectors(inds(T))
+    N = length(inds(T))
+    perm = ntuple(i->(N-i+1),N)
+    scale_by_permfactor!(TT,perm,inds)
+  end
   return ITensor(store(TT),dag(inds(T)))
 end
 
