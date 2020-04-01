@@ -75,11 +75,6 @@ Base.complex(D::BlockSparse{T}) where {T} = BlockSparse{complex(T)}(complex(data
 Base.conj(D::BlockSparse{<: Real}) = D
 Base.conj(D::BlockSparse) = BlockSparse(conj(data(D)), copy(blockoffsets(D)))
 
-function scale!(D::BlockSparse,α::Number)
-  scale!(data(D),α)
-  return D
-end
-
 Base.eltype(::BlockSparse{T}) where {T} = eltype(T)
 # This is necessary since for some reason inference doesn't work
 # with the more general definition (eltype(Nothing) === Any)
