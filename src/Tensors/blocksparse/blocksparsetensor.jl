@@ -822,7 +822,9 @@ function contract(T1::BlockSparseTensor{<:Any,N1},
   return R
 end
 
-compute_alpha(labelsR,indsR,labelsT1,indsT1,labelsT2,indsT2)::Float64 = 1.0
+compute_alpha(labelsR,blockR,indsR,
+              labelsT1,blockT1,indsT1,
+              labelsT2,blockT2,indsT2)::Float64 = 1.0
 
 function contract!(R::BlockSparseTensor{<:Number,NR},
                    labelsR,
