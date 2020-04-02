@@ -59,7 +59,7 @@ Base.complex(T::Tensor) = Tensor(complex(store(T)),copy(inds(T)))
 
 LinearAlgebra.norm(T::Tensor) = norm(store(T))
 
-Base.conj(T::Tensor) = Tensor(conj(store(T)), copy(inds(T)))
+Base.conj(T::Tensor;kwargs...) = Tensor(conj(store(T);kwargs...), copy(inds(T)))
 
 Random.randn!(T::Tensor) = (randn!(store(T)); T)
 
@@ -137,8 +137,10 @@ end
 # Convert the tensor type to the closest dense
 # type
 function dense(::Type{<:Tensor{ElT,NT,StoreT,IndsT}}) where {ElT,NT,StoreT,IndsT}
-  return Tensor{ElT,NT,dense(StoreT),dense(IndsT)}
+  return Tensor{ElT,NT,dense(StoreT), dense(IndsT)}
 end
+
+dense(T::Tensor) = Tensor(dense(store(T)), inds(T))
 
 function StaticArrays.similar_type(::Type{<:Tensor{ElT,<:Any,StoreT,<:Any}},::Type{IndsR}) where {ElT,StoreT,IndsR}
   return Tensor{ElT,ndims(IndsR),StoreT,IndsR}

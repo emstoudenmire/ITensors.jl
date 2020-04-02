@@ -13,6 +13,8 @@ Base.eltype(::Type{<:TensorStorage{ElT}}) where {ElT} = ElT
 
 Base.iterate(S::TensorStorage,args...) = iterate(data(S),args...)
 
+dense(S::TensorStorage) = S
+
 # This is necessary since for some reason inference doesn't work
 # with the more general definition (eltype(Nothing) === Any)
 Base.eltype(::TensorStorage{Nothing}) = Nothing
@@ -34,7 +36,15 @@ end
 
 # This may need to be overloaded, since storage types
 # often have other fields besides data
-Base.conj(S::T) where {T<:TensorStorage} = T(conj(data(S)))
+
+Base.conj!(S::TensorStorage) = (conj!(data(S)); return S)
+
+function Base.conj(S::T;always_copy = false) where {T<:TensorStorage} 
+  if always_copy
+    return conj!(copy(S))
+  end
+  return T(conj(data(S)))
+end
 
 Base.complex(S::T) where {T<:TensorStorage} = complex(T)(complex(data(S)))
 
