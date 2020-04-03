@@ -182,6 +182,68 @@ end
   @test dot(A, B) == 11.0
 end
 
+@testset "mul!" begin
+  i = Index(2; tags="i")
+  j = Index(2; tags="j")
+  k = Index(2; tags="k")
+
+  A = randomITensor(i, j)
+  B = randomITensor(j, k)
+  C = randomITensor(i, k)
+  mul!(C, A, B)
+  @test C ≈ A*B
+
+  A = randomITensor(i, j)
+  B = randomITensor(j, k)
+  C = randomITensor(k, i)
+  mul!(C, A, B)
+  @test C ≈ A*B
+
+  A = randomITensor(i, j)
+  B = randomITensor(k, j)
+  C = randomITensor(i, k)
+  mul!(C, A, B)
+  @test C ≈ A*B
+
+  A = randomITensor(i, j)
+  B = randomITensor(k, j)
+  C = randomITensor(k, i)
+  mul!(C, A, B)
+  @test C ≈ A*B
+
+  A = randomITensor(j, i)
+  B = randomITensor(j, k)
+  C = randomITensor(i, k)
+  mul!(C, A, B)
+  @test C ≈ A*B
+
+  A = randomITensor(j, i)
+  B = randomITensor(j, k)
+  C = randomITensor(k, i)
+  mul!(C, A, B)
+  @test C ≈ A*B
+
+  A = randomITensor(j, i)
+  B = randomITensor(k, j)
+  C = randomITensor(i, k)
+  mul!(C, A, B)
+  @test C ≈ A*B
+
+  A = randomITensor(j, i)
+  B = randomITensor(k, j)
+  C = randomITensor(k, i)
+  mul!(C, A, B)
+  @test C ≈ A*B
+
+  A = randomITensor(i, j)
+  B = randomITensor(k, j)
+  C = randomITensor(k, i)
+  α = 2
+  β = 3
+  R = mul!(copy(C), A, B, α, β)
+  @test α*A*B+β*C ≈ R
+end
+
 @testset "exponentiate" begin
   s1 = Index(2,"s1")
   s2 = Index(2,"s2")
@@ -210,6 +272,23 @@ end
                     2,2,2,2)
   Aexp_from_mat = itensor(Amatexp,i1,i2,s1,s2)
   @test Aexp ≈ Aexp_from_mat
+end
+
+@testset "setelt" begin
+  i = Index(2,"i")
+
+  T = setelt(i(1))
+  @test T[i(1)] ≈ 1.0
+  @test T[i(2)] ≈ 0.0
+
+  T = setelt(i(2))
+  @test T[i(1)] ≈ 0.0
+  @test T[i(2)] ≈ 1.0
+
+  # Test setelt taking Pair{Index,Int}
+  T = setelt(i=>2)
+  @test T[i(1)] ≈ 0.0
+  @test T[i(2)] ≈ 1.0
 end
 
 
@@ -587,6 +666,42 @@ end
       @test T ≈ U*D*prime(dag(U)) atol=1e-13
       UUᴴ =  U*prime(dag(U),u)
       @test UUᴴ ≈ δ(u,u')
+    end
+
+    @testset "Test factorize of an ITensor" begin
+
+      @testset "factorize default" begin
+        L,R = factorize(A, (j,l))
+        l = commonind(L, R)
+        @test A ≈ L*R
+        @test L*dag(prime(L, l)) ≈ δ(SType, l, l')
+        @test R*dag(prime(R, l)) ≉ δ(SType, l, l')
+      end
+
+      @testset "factorize ortho left" begin
+        L,R = factorize(A, (j,l); ortho="left")
+        l = commonind(L, R)
+        @test A ≈ L*R
+        @test L*dag(prime(L, l)) ≈ δ(SType, l, l')
+        @test R*dag(prime(R, l)) ≉ δ(SType, l, l')
+      end
+
+      @testset "factorize ortho right" begin
+        L,R = factorize(A, (j,l); ortho="right")
+        l = commonind(L, R)
+        @test A ≈ L*R
+        @test L*dag(prime(L, l)) ≉ δ(SType, l, l')
+        @test R*dag(prime(R, l)) ≈ δ(SType, l, l')
+      end
+
+      @testset "factorize ortho none" begin
+        L,R = factorize(A, (j,l); ortho="none")
+        l = commonind(L, R)
+        @test A ≈ L*R
+        @test L*dag(prime(L, l)) ≉ δ(SType, l, l')
+        @test R*dag(prime(R, l)) ≉ δ(SType, l, l')
+      end
+
     end
 
   end # End ITensor factorization testset
