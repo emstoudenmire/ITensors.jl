@@ -1,5 +1,6 @@
 export BlockSparseTensor,
        blockview,
+       scale_by_permfactor!,
        addblock!
 
 #
@@ -648,6 +649,7 @@ function scale_by_permfactor!(T::BlockSparseTensor{<:Number,N},
     Tblock = blockview(T,blockT)
     pfac = permfactor(perm,blockT,inds)
     if pfac != 1.0
+      scale!(Tblock,pfac)
     end
   end
 end
