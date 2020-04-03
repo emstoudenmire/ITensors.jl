@@ -658,7 +658,7 @@ function Tensors.dag(T::ITensor; always_copy = false)
     TT = conj(tensor(T);always_copy=true)
     N = length(inds(T))
     perm = ntuple(i->(N-i+1),N)
-    scale_by_permfactor!(TT,perm,inds)
+    scale_by_permfactor!(TT,perm,inds(T))
   else
     TT = conj(tensor(T); always_copy=always_copy)
   end
