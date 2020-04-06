@@ -1,5 +1,6 @@
 export polar,
-       Spectrum
+       Spectrum,
+       exphermitian
 
 #
 # Linear Algebra of order 2 Tensors
@@ -60,14 +61,40 @@ svd of an order-2 DenseTensor
 """
 function LinearAlgebra.svd(T::DenseTensor{ElT,2,IndsT};
                            kwargs...) where {ElT,IndsT}
+  truncate = haskey(kwargs, :maxdim) || haskey(kwargs, :cutoff)
+
+  # Keyword argument deprecations
+  use_absolute_cutoff = false
+  if haskey(kwargs, :absoluteCutoff)
+    @warn "In svd, keyword argument absoluteCutoff is deprecated in favor of use_absolute_cutoff"
+    use_absolute_cutoff = get(kwargs,
+                              :absoluteCutoff,
+                              use_absolute_cutoff)
+  end
+  use_relative_cutoff = true
+  if haskey(kwargs, :doRelCutoff)
+    @warn "In svd, keyword argument doRelCutoff is deprecated in favor of use_relative_cutoff"
+    use_relative_cutoff = get(kwargs,
+                              :doRelCutoff,
+                              use_relative_cutoff)
+  end
+  if haskey(kwargs, :fastSVD)
+    @warn "In svd, keyword argument fastSVD is deprecated in favor of fastsvd"
+    fastsvd = get(kwargs, :fastsvd, true)
+  end
+
   maxdim::Int = get(kwargs,:maxdim,minimum(dims(T)))
   mindim::Int = get(kwargs,:mindim,1)
   cutoff::Float64 = get(kwargs,:cutoff,0.0)
-  absoluteCutoff::Bool = get(kwargs,:absoluteCutoff,false)
-  doRelCutoff::Bool = get(kwargs,:doRelCutoff,true)
-  fastSVD::Bool = get(kwargs,:fastSVD,false)
+  use_absolute_cutoff::Bool = get(kwargs,
+                                  :use_absolute_cutoff,
+                                  use_absolute_cutoff)
+  use_relative_cutoff::Bool = get(kwargs,
+                                  :use_relative_cutoff,
+                                  use_relative_cutoff)
+  fastsvd::Bool = get(kwargs,:fastsvd,false)
 
-  if fastSVD
+  if fastsvd
     MU,MS,MV = svd(matrix(T))
   else
     MU,MS,MV = svd_recursive(matrix(T))
@@ -75,11 +102,15 @@ function LinearAlgebra.svd(T::DenseTensor{ElT,2,IndsT};
   conj!(MV)
 
   P = MS.^2
-  truncerr,_ = truncate!(P;mindim=mindim,
-                         maxdim=maxdim,
-                         cutoff=cutoff,
-                         absoluteCutoff=absoluteCutoff,
-                         doRelCutoff=doRelCutoff)
+  if truncate
+    truncerr,_ = truncate!(P;mindim=mindim,
+                             maxdim=maxdim,
+                             cutoff=cutoff,
+                             use_absolute_cutoff=use_absolute_cutoff,
+                             use_relative_cutoff=use_relative_cutoff)
+  else
+    truncerr = 0.0
+  end
   spec = Spectrum(P,truncerr)
   dS = length(P)
   if dS < length(MS)
@@ -102,12 +133,32 @@ end
 
 function LinearAlgebra.eigen(T::Hermitian{ElT,<:DenseTensor{ElT,2,IndsT}};
                              kwargs...) where {ElT<:Union{Real,Complex},IndsT}
+  # Keyword argument deprecations
+  use_absolute_cutoff = false
+  if haskey(kwargs, :absoluteCutoff)
+    @warn "In svd, keyword argument absoluteCutoff is deprecated in favor of use_absolute_cutoff"
+    use_absolute_cutoff = get(kwargs,
+                              :absoluteCutoff,
+                              use_absolute_cutoff)
+  end
+  use_relative_cutoff = true
+  if haskey(kwargs, :doRelCutoff)
+    @warn "In svd, keyword argument doRelCutoff is deprecated in favor of use_relative_cutoff"
+    use_relative_cutoff = get(kwargs,
+                              :doRelCutoff,
+                              use_relative_cutoff)
+  end
+
   truncate = haskey(kwargs,:maxdim) || haskey(kwargs,:cutoff)
   maxdim::Int = get(kwargs,:maxdim,minimum(dims(T)))
   mindim::Int = get(kwargs,:mindim,1)
   cutoff::Float64 = get(kwargs,:cutoff,0.0)
-  absoluteCutoff::Bool = get(kwargs,:absoluteCutoff,false)
-  doRelCutoff::Bool = get(kwargs,:doRelCutoff,true)
+  use_absolute_cutoff::Bool = get(kwargs,
+                                  :use_absolute_cutoff,
+                                  use_absolute_cutoff)
+  use_relative_cutoff::Bool = get(kwargs,
+                                  :use_relative_cutoff,
+                                  use_relative_cutoff)
 
   DM,UM = eigen(matrix(T))
 
@@ -119,8 +170,8 @@ function LinearAlgebra.eigen(T::Hermitian{ElT,<:DenseTensor{ElT,2,IndsT}};
   if truncate
     truncerr,_ = truncate!(DM;maxdim=maxdim,
                               cutoff=cutoff,
-                              absoluteCutoff=absoluteCutoff,
-                              doRelCutoff=doRelCutoff)
+                              use_absolute_cutoff=use_absolute_cutoff,
+                              use_relative_cutoff=use_relative_cutoff)
     dD = length(DM)
     if dD < size(UM,2)
       UM = UM[:,1:dD]
@@ -156,7 +207,6 @@ function LinearAlgebra.eigen(T::DenseTensor{ElT,2,IndsT};
   return U,D
 end
 
-
 function qr_positive(M::AbstractMatrix)
   sparseQ,R = qr(M)
   Q = convert(Matrix,sparseQ)
@@ -172,14 +222,32 @@ end
 
 function LinearAlgebra.eigen(T::DenseTensor{ElT,2,IndsT};
                              kwargs...) where {ElT<:Union{Real,Complex},IndsT}
-  #ispossemidef::Bool = get(kwargs,:ispossemidef,false)
+  # Keyword argument deprecations
+  use_absolute_cutoff = false
+  if haskey(kwargs, :absoluteCutoff)
+    @warn "In svd, keyword argument absoluteCutoff is deprecated in favor of use_absolute_cutoff"
+    use_absolute_cutoff = get(kwargs,
+                              :absoluteCutoff,
+                              use_absolute_cutoff)
+  end
+  use_relative_cutoff = true
+  if haskey(kwargs, :doRelCutoff)
+    @warn "In svd, keyword argument doRelCutoff is deprecated in favor of use_relative_cutoff"
+    use_relative_cutoff = get(kwargs,
+                              :doRelCutoff,
+                              use_relative_cutoff)
+  end
 
   truncate = haskey(kwargs,:maxdim) || haskey(kwargs,:cutoff)
   maxdim::Int = get(kwargs,:maxdim,minimum(dims(T)))
   mindim::Int = get(kwargs,:mindim,1)
   cutoff::Float64 = get(kwargs,:cutoff,0.0)
-  absoluteCutoff::Bool = get(kwargs,:absoluteCutoff,false)
-  doRelCutoff::Bool = get(kwargs,:doRelCutoff,true)
+  use_absolute_cutoff::Bool = get(kwargs,
+                                  :use_absolute_cutoff,
+                                  use_absolute_cutoff)
+  use_relative_cutoff::Bool = get(kwargs,
+                                  :use_relative_cutoff,
+                                  use_relative_cutoff)
 
   DM,UM = eigen(matrix(T))
 
@@ -191,8 +259,8 @@ function LinearAlgebra.eigen(T::DenseTensor{ElT,2,IndsT};
   if truncate
     truncerr,_ = truncate!(DM;maxdim=maxdim,
                               cutoff=cutoff,
-                              absoluteCutoff=absoluteCutoff,
-                              doRelCutoff=doRelCutoff)
+                              use_absolute_cutoff=use_absolute_cutoff,
+                              use_relative_cutoff=use_relative_cutoff)
     dD = length(DM)
     if dD < size(UM,2)
       UM = UM[:,1:dD]

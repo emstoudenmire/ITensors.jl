@@ -5,7 +5,7 @@ export ITensor,
        combinedind,
        delta,
        δ,
-       exphermitian,
+       #exphermitian,
        hasind,
        hasinds,
        hassameinds,
@@ -778,7 +778,7 @@ function LinearAlgebra.exp(A::ITensor,
   return itensor(expAT)
 end
 
-function exphermitian(A::ITensor,
+function Tensors.exphermitian(A::ITensor,
                       Linds,
                       Rinds = prime(IndexSet(Linds))) 
   return exp(A,Linds,Rinds;ishermitian=true)

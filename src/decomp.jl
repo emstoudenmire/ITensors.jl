@@ -43,8 +43,8 @@ arguments provided. The following keyword arguments are recognized:
 * `maxdim` [Int]
 * `mindim` [Int]
 * `cutoff` [Float64]
-* `absoluteCutoff` [Bool] Default value: false.
-* `doRelCutoff` [Bool] Default value: true.
+* `use_absolute_cutoff` [Bool] Default value: false.
+* `use_relative_cutoff` [Bool] Default value: true.
 * `utags` [String] Default value: "Link,u".
 * `vtags` [String] Default value: "Link,v".
 * `fastSVD` [Bool] Defaut value: false.
@@ -66,7 +66,7 @@ function LinearAlgebra.svd(A::ITensor,
     AC = permute(AC,cL,cR)
   end
 
-  UT,ST,VT,spec = svd(tensor(AC);kwargs...)
+  UT,ST,VT,spec = svd(tensor(AC); kwargs...)
   UC,S,VC = itensor(UT),itensor(ST),itensor(VT)
 
   u = commonind(S,UC)
