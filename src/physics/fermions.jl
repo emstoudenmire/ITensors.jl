@@ -136,7 +136,7 @@ function Tensors.compute_alpha(labelsR,blockR,indsR::IndexSet,
 
     orig_labelsR = zeros(Int,NR)
     u = 1
-    for l in (labelsT1...,labelsT2...)
+    for l in (nlabelsT1...,nlabelsT2...)
       if l > 0 
         orig_labelsR[u] = l
         u += 1
