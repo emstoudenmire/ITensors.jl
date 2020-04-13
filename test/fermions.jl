@@ -64,7 +64,7 @@ using ITensors,
     N1[s'(2),s(2)] = +1.0
 
     N2 = ITensor(dag(s),s')
-    N2[s(2),s'(2)] = -1.0
+    N2[s'(2),s(2)] = +1.0
     @test norm(N1-N2) ≈ 0.0
 
     N3 = ITensor(s',dag(s))
@@ -72,7 +72,7 @@ using ITensors,
     @test norm(N1-N3) ≈ 0.0
 
     N4 = ITensor(dag(s),s')
-    N4[s'(2),s(2)] = +1.0
+    N4[s(2),s'(2)] = -1.0
     @test norm(N1-N4) ≈ 0.0
   end
 
