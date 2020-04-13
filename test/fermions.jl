@@ -57,6 +57,25 @@ using ITensors,
     @test I[s(2),s'(2)] ≈ -1.0
   end
 
+  @testset "Making operators different ways" begin
+    s = Index([QN("Nf",0,-1)=>1,QN("Nf",1,-1)=>1],"s")
+
+    N1 = ITensor(s',dag(s))
+    N1[s'(2),s(2)] = +1.0
+
+    N2 = ITensor(dag(s),s')
+    N2[s(2),s'(2)] = -1.0
+    @test norm(N1-N2) ≈ 0.0
+
+    N3 = ITensor(s',dag(s))
+    N3[s(2),s'(2)] = -1.0
+    @test norm(N1-N3) ≈ 0.0
+
+    N4 = ITensor(dag(s),s')
+    N4[s'(2),s(2)] = +1.0
+    @test norm(N1-N4) ≈ 0.0
+  end
+
   @testset "Permute and Add Fermionic ITensors" begin
 
     @testset "Permute Operators" begin
