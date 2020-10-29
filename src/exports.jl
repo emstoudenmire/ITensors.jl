@@ -291,6 +291,9 @@ export
   square_lattice,
   triangular_lattice,
 
+# physics/fermions.jl
+  isfermionic,
+
 # physics/sitetype.jl
   SiteType,
   @SiteType_str,

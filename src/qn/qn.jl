@@ -21,7 +21,6 @@ name(qv::QNVal) = qv.name
 val(qv::QNVal) = qv.val
 modulus(qv::QNVal) = qv.modulus
 isactive(qv::QNVal) = modulus(qv) != 0
-isfermionic(qv::QNVal) = modulus(qv) < 0
 Base.:<(qv1::QNVal,qv2::QNVal) = (name(qv1) < name(qv2))
 
 function qn_mod(val::Int,modulus::Int)
