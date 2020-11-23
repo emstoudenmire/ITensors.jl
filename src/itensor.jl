@@ -1092,7 +1092,9 @@ end
 
 function combinedind(T::ITensor)
   if store(T) isa Combiner
-    return inds(T)[1]
+    ci = NDTensors.cinds(store(T))
+    length(ci) != 1 && error("Combiner has more than one combined Index, use combinedinds")
+    return inds(T)[ci[1]]
   end
   return nothing
 end
