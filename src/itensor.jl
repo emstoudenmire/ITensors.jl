@@ -1104,7 +1104,7 @@ combinedind(T::ITensor{0}) = nothing
 norm(T::ITensor) = norm(tensor(T))
 
 function dag(T::ITensor; always_copy=false)
-  if has_fermionic_sectors(inds(T)) # <fermions>
+  if has_fermionic_subspaces(inds(T)) # <fermions>
     TT = conj(tensor(T);always_copy=true)
     N = length(inds(T))
     perm = ntuple(i->(N-i+1),N) # reverse permutation
