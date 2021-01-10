@@ -35,6 +35,7 @@ using Test
     "qnitensor.jl",
     "qncombiner.jl",
     "qndiagitensor.jl",
+    "fermions.jl",
     "empty.jl",
     "qnmpo.jl",
     "readwrite.jl",
