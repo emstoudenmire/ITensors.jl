@@ -25,8 +25,8 @@ Random.seed!(1234)
     T = ITensor(A, i', dag(i))
     @test flux(T) == QN(0)
     @test nnzblocks(T) == 2
-    @test (1,1) in nzblocks(T)
-    @test (2,2) in nzblocks(T)
+    @test Block(1,1) in nzblocks(T)
+    @test Block(2,2) in nzblocks(T)
     @test T[1, 1] == 1.0
     @test T[2, 2] == 2.0
     @test T[2, 3] == 3.0
@@ -36,8 +36,8 @@ Random.seed!(1234)
     T = itensor(A, i', dag(i))
     @test flux(T) == QN(0)
     @test nnzblocks(T) == 2
-    @test (1,1) in nzblocks(T)
-    @test (2,2) in nzblocks(T)
+    @test Block(1,1) in nzblocks(T)
+    @test Block(2,2) in nzblocks(T)
     @test T[1, 1] == 1.0
     @test T[2, 2] == 2.0
     @test T[2, 3] == 3.0
@@ -47,8 +47,8 @@ Random.seed!(1234)
     T = ITensor(A, i', dag(i); tol = 1e-9)
     @test flux(T) == QN(0)
     @test nnzblocks(T) == 2
-    @test (1,1) in nzblocks(T)
-    @test (2,2) in nzblocks(T)
+    @test Block(1,1) in nzblocks(T)
+    @test Block(2,2) in nzblocks(T)
     @test T[1, 1] == 1.0
     @test T[2, 2] == 2.0
     @test T[2, 3] == 3.0
@@ -61,7 +61,7 @@ Random.seed!(1234)
     T = ITensor(A, i', dag(i); tol = 1e-8)
     @test flux(T) == QN(0)
     @test nnzblocks(T) == 1
-    @test (2,2) in nzblocks(T)
+    @test Block(2,2) in nzblocks(T)
     @test T[1, 1] == 0.0
     @test T[2, 2] == 2.0
     @test T[2, 3] == 3.0
@@ -74,7 +74,7 @@ Random.seed!(1234)
     T = ITensor(A, i', dag(i); tol = 1e-8)
     @test flux(T) == QN(-1)
     @test nnzblocks(T) == 1
-    @test (1,2) in nzblocks(T)
+    @test Block(1,2) in nzblocks(T)
     @test T[1, 1] == 0.0
     @test T[1, 2] == 2.0
     @test T[1, 3] == 3.0
@@ -299,6 +299,14 @@ Random.seed!(1234)
     for ii in dim(i), jj in dim(j)
       @test 2*A[i=>ii,j=>jj] == B[i=>ii,j=>jj]
     end
+  end
+
+  @testset "Check arrows when summing" begin
+    s = siteinds("S=1/2",4;conserve_qns=true)
+    Tout = randomITensor(QN("Sz"=>2),s[2],s[1],s[3],s[4])
+    Tin = randomITensor(QN("Sz"=>2),dag(s[1]),dag(s[2]),dag(s[3]),dag(s[4]))
+    @test norm(Tout-Tout) < 1E-10 # this is ok
+    @test_throws ErrorException (Tout+Tin)         # not ok
   end
 
   @testset "Copy" begin
@@ -1279,9 +1287,9 @@ Random.seed!(1234)
 
       A = emptyITensor(ElT, l,s,dag(r))
 
-      addblock!(A,(2,1,2))
-      addblock!(A,(1,2,2))
-      addblock!(A,(2,2,3))
+      insertblock!(A,(2,1,2))
+      insertblock!(A,(1,2,2))
+      insertblock!(A,(2,2,3))
 
       for b in nzblocks(A)
         @test flux(A,b)==QN()
@@ -1308,10 +1316,10 @@ Random.seed!(1234)
                 QN("Sz", 2) => 4,
                 QN("Sz", 4) => 1)
       A = emptyITensor(ElT, s, s')
-      addblock!(A, (5,2))
-      addblock!(A, (4,3))
-      addblock!(A, (3,4))
-      addblock!(A, (2,5))
+      insertblock!(A, (5,2))
+      insertblock!(A, (4,3))
+      insertblock!(A, (3,4))
+      insertblock!(A, (2,5))
       randn!(A)
       U,S,V = svd(A,s)
       @test U*S*V ≈ A
@@ -1324,11 +1332,11 @@ Random.seed!(1234)
                 QN("Sz", 2) => 4,
                 QN("Sz", 4) => 1)
       A = emptyITensor(ElT, s, s')
-      addblock!(A, (5,1))
-      addblock!(A, (4,2))
-      addblock!(A, (3,3))
-      addblock!(A, (2,4))
-      addblock!(A, (1,5))
+      insertblock!(A, (5,1))
+      insertblock!(A, (4,2))
+      insertblock!(A, (3,3))
+      insertblock!(A, (2,4))
+      insertblock!(A, (1,5))
       U,S,V = svd(A, s)
       @test dims(S) == dims(A)
       @test U*S*V ≈ A
@@ -1341,11 +1349,11 @@ Random.seed!(1234)
                 QN("Sz", 2) => 4,
                 QN("Sz", 4) => 1)
       A = emptyITensor(ElT, s, s')
-      addblock!(A, (5,1))
-      addblock!(A, (4,2))
-      addblock!(A, (3,3))
-      addblock!(A, (2,4))
-      addblock!(A, (1,5))
+      insertblock!(A, (5,1))
+      insertblock!(A, (4,2))
+      insertblock!(A, (3,3))
+      insertblock!(A, (2,4))
+      insertblock!(A, (1,5))
       U,S,V = svd(A, s; cutoff=0)
       @test dims(S) == (0,0)
       @test U*S*V ≈ A
@@ -1413,18 +1421,18 @@ end
     Aexp = exp(A)
     Amat = Array(A, i1,i2, i1', i2')
     Amatexp = reshape(exp(reshape(Amat,9,9)),3,3,3,3)
-    @test isapprox(norm(Array(Aexp,i1,i2,i1',i2') - Amatexp),0.0, atol=1e-14)
+    @test Array(Aexp,i1,i2,i1',i2') ≈ Amatexp rtol=1e-14
     @test flux(Aexp) == QN()
     @test length(setdiff(inds(Aexp),inds(A)))==0
 
-    @test isapprox(norm(exp(A, (i1,i2), (i1',i2')) - Aexp),0.0, atol=5e-14)
+    @test exp(A, (i1,i2), (i1',i2')) ≈ Aexp rtol=5e-14
 
     # test the case where indices are permuted
     A = randomITensor(QN(),i1,dag(i1)', dag(i2)',i2)
     Aexp = exp(A, (i1,i2), (i1',i2'))
     Amat = Array(A, i1,i2,i1', i2')
     Amatexp = reshape(exp(reshape(Amat,9,9)),3,3,3,3)
-    @test isapprox(norm(Array(Aexp,i1,i2,i1',i2') - Amatexp),0.0,atol=1e-14)
+    @test Array(Aexp,i1,i2,i1',i2') ≈ Amatexp rtol=1e-14
 
     # test exponentiation in the Hermitian case
     i1 = Index([QN(0)=>2,QN(1)=>2,QN(2)=>3],"i1")
@@ -1434,7 +1442,7 @@ end
     Amat = Array(Ah ,i1', i1)
     Aexp = exp(Ah; ishermitian=true)
     Amatexp= exp(LinearAlgebra.Hermitian(Amat))
-    @test isapprox(norm(Array(Aexp,i1,i1')-Amatexp),0.0,atol=5e-14)
+    @test Array(Aexp,i1,i1') ≈ Amatexp rtol=5e-14
   end
 
   @testset "Mixed arrows" begin
@@ -1445,6 +1453,13 @@ end
     @test exp(dense(A), (i1, i1'), (i2', i2)) ≈ dense(expA)
   end
 
+  @testset "Test contraction direction error" begin
+    i = Index([QN(0)=>1, QN(1)=>1], "i")
+    A = randomITensor(i', dag(i))
+    A² = A' * A
+    @test dense(A²) ≈ dense(A') * dense(A)
+    @test_throws ErrorException A' * dag(A)
+  end
 end
 
 end

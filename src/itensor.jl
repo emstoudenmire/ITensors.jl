@@ -1,5 +1,7 @@
 
 """
+    ITensor{N}
+
 An ITensor is a tensor whose interface is 
 independent of its memory layout. Therefore
 it is not necessary to know the ordering
@@ -7,6 +9,63 @@ of an ITensor's indices, only which indices
 an ITensor has. Operations like contraction
 and addition of ITensors automatically
 handle any memory permutations.
+
+# Examples
+
+```julia
+julia> i = Index(2, "i")
+(dim=2|id=287|"i")
+
+julia> A = randomITensor(i', i)
+ITensor ord=2 (dim=2|id=287|"i")' (dim=2|id=287|"i")
+NDTensors.Dense{Float64,Array{Float64,1}}
+
+julia> @show A;
+A = ITensor ord=2
+Dim 1: (dim=2|id=287|"i")'
+Dim 2: (dim=2|id=287|"i")
+NDTensors.Dense{Float64,Array{Float64,1}}
+ 2×2
+ 0.28358594718392427   1.4342219756446355
+ 1.6620103556283987   -0.40952231269251566
+
+julia> @show inds(A);
+inds(A) = IndexSet{2} (dim=2|id=287|"i")' (dim=2|id=287|"i") 
+
+julia> A[i => 1, i' => 2] = 1;
+
+julia> @show A;
+A = ITensor ord=2
+Dim 1: (dim=2|id=287|"i")'
+Dim 2: (dim=2|id=287|"i")
+NDTensors.Dense{Float64,Array{Float64,1}}
+ 2×2
+ 0.28358594718392427   1.4342219756446355
+ 1.0                  -0.40952231269251566
+
+julia> @show store(A);
+store(A) = [0.28358594718392427, 1.0, 1.4342219756446355, -0.40952231269251566]
+
+julia> B = randomITensor(i, i');
+
+julia> @show B;
+B = ITensor ord=2
+Dim 1: (dim=2|id=287|"i")
+Dim 2: (dim=2|id=287|"i")'
+NDTensors.Dense{Float64,Array{Float64,1}}
+ 2×2
+ -0.6510816500352691   0.2579101497658179
+  0.256266641521826   -0.9464735926768166
+
+julia> @show A + B;
+A + B = ITensor ord=2
+Dim 1: (dim=2|id=287|"i")'
+Dim 2: (dim=2|id=287|"i")
+NDTensors.Dense{Float64,Array{Float64,1}}
+ 2×2
+ -0.3674957028513448   1.6904886171664615
+  1.2579101497658178  -1.3559959053693322
+```
 """
 mutable struct ITensor{N}
   store::TensorStorage
@@ -104,9 +163,35 @@ setstore(T::ITensor, st) = itensor(st,inds(T))
 """
     CartesianIndices(A::ITensor)
 
-Iterate over the CartesianIndices of an ITensor.
+Create a CartesianIndices iterator for an ITensor. Helpful for
+iterating over all elements of the ITensor.
+
+julia> i = Index(2, "i")
+(dim=2|id=90|"i")
+
+julia> j = Index(3, "j")
+(dim=3|id=554|"j")
+
+julia> A = randomITensor(i, j)
+ITensor ord=2 (dim=2|id=90|"i") (dim=3|id=554|"j")
+Dense{Float64,Array{Float64,1}}
+
+julia> C = CartesianIndices(A)
+2×3 CartesianIndices{2,Tuple{Base.OneTo{Int64},Base.OneTo{Int64}}}:
+ CartesianIndex(1, 1)  CartesianIndex(1, 2)  CartesianIndex(1, 3)
+ CartesianIndex(2, 1)  CartesianIndex(2, 2)  CartesianIndex(2, 3)
+
+julia> for c in C
+         @show c, A[c]
+       end
+(c, A[c]) = (CartesianIndex(1, 1), 0.9867887290267864)
+(c, A[c]) = (CartesianIndex(2, 1), -0.5967323222288754)
+(c, A[c]) = (CartesianIndex(1, 2), 0.9675791778518225)
+(c, A[c]) = (CartesianIndex(2, 2), 0.2842549524334651)
+(c, A[c]) = (CartesianIndex(1, 3), -0.023483276282564795)
+(c, A[c]) = (CartesianIndex(2, 3), -0.4877709982071688)
 """
-CartesianIndices(A::ITensor) = CartesianIndices(dims(A))
+CartesianIndices(A::ITensor) = CartesianIndices(inds(A))
 
 #
 # ITensor constructors
@@ -532,6 +617,21 @@ Same as `T[]`.
 """
 scalar(T::ITensor) = T[]::Number
 
+struct LastVal
+  n::Int
+end
+
+lastindex(A::ITensor, n::Int64) = LastVal(n)
+
+# Implement when ITensors can be indexed by a single integer
+#lastindex(A::ITensor) = dim(A)
+
+lastval_to_int(n::Int, ::LastVal) = n
+
+lastval_to_int(::Int, n::Int) = n
+
+lastval_to_int(T::ITensor, I...) = lastval_to_int.(dims(T), I)
+
 """
     getindex(T::ITensor, I::Int...)
 
@@ -545,15 +645,20 @@ A = ITensor(2.0, i, i')
 A[1, 2] # 2.0, same as: A[i => 1, i' => 2]
 ```
 """
-function getindex(T::ITensor{N},
-                  I::Vararg{Int,N}) where {N}
+function getindex(T::ITensor{N}, I::Vararg{Union{Int, LastVal}, N}) where {N}
+  I = lastval_to_int(T, I...)
+  @boundscheck checkbounds(tensor(T), I...)
   return tensor(T)[I...]::Number
+end
+
+function getindex(T::ITensor{N}, b::Block{N}) where {N}
+  # XXX: this should return an ITensor view
+  return tensor(T)[b]
 end
 
 # Version accepting CartesianIndex, useful when iterating over
 # CartesianIndices
-getindex(T::ITensor{N}, I::CartesianIndex{N}) where {N} =
-  tensor(T)[I]::Number
+getindex(T::ITensor{N}, I::CartesianIndex{N}) where {N} = T[Tuple(I)...]
 
 """
     getindex(T::ITensor, ivs...)
@@ -582,11 +687,6 @@ function getindex(T::ITensor)
   return tensor(T)[]::Number
 end
 
-lastindex(A::ITensor, n::Int64) = dim(A, n)
-
-# Implement when ITensors can be indexed by a single integer
-#lastindex(A::ITensor) = dim(A)
-
 """
     setindex!(T::ITensor, x::Number, I::Int...)
 
@@ -600,9 +700,11 @@ Index ordering of the ITensor.
 i = Index(2; tags = "i")
 A = ITensor(i, i')
 A[1, 2] = 1.0 # same as: A[i => 1, i' => 2] = 1.0
+A[2, :] = [2.0 3.0]
 ```
 """
 function setindex!(T::ITensor, x::Number, I::Int...)
+  @boundscheck checkbounds(tensor(T), I...)
   fluxT = flux(T)
   if !isnothing(fluxT) && fluxT != flux(T, I...)
     error("In `setindex!`, the element you are trying to set is in a block that does not have the same flux as the other blocks of the ITensor. You may be trying to create an ITensor that does not have a well defined quantum number flux.")
@@ -626,6 +728,7 @@ of `IndexVal`s or `Pair{<:Index, Int}`.
 i = Index(2; tags = "i")
 A = ITensor(i, i')
 A[i => 1, i' => 2] = 1.0 # same as: A[i' => 2, i => 1] = 1.0
+A[i => 2, i' => :] = [2.0 3.0]
 ```
 """
 function setindex!(T::ITensor, x::Number, ivs...)
@@ -636,6 +739,36 @@ function setindex!(T::ITensor, x::Number, ivs...)
   fac = NDTensors.permfactor(p,ivs...) #<fermions>
 
   T[vals...] = (fac*x)
+  return T
+end
+
+Base.checkbounds(::Any, ::Block) = nothing
+
+function setindex!(T::ITensor, A::AbstractArray, I...)
+  @boundscheck checkbounds(tensor(T), I...)
+  TR = setindex!!(tensor(T), A, I...)
+  setstore!(T, store(TR))
+  return T
+end
+
+#function setindex!(T::ITensor, A::AbstractArray, b::Block)
+#  # XXX: use setindex!! syntax
+#  tensor(T)[b] = A
+#  return T
+#end
+
+function setindex!(T::ITensor, A::AbstractArray,
+                   ivs::Pair{<:Index}...)
+  input_inds = IndexSet(first.(ivs))
+  p = NDTensors.getperm(inds(T), input_inds)
+  # Base.to_indices changes Colons into proper ranges, here
+  # using the dimensions of the indices.
+  vals = to_indices(CartesianIndices(input_inds), last.(ivs))
+  # Lazily permute the array to correctly fit into the ITensor,
+  # accounting for the input indices being in a different order
+  # from the ITensor indices.
+  pvals = NDTensors.permute(vals, p)
+  T[pvals...] = PermutedDimsArray(reshape(A, length.(vals)), p)
   return T
 end
 
@@ -724,7 +857,7 @@ hassameinds(A, B) =
     commoninds(A, B; kwargs...)
     commoninds(::Order{N}, A, B; kwargs...)
 
-Return an IndexSet with indices that are common (in the interesection) between the indices of `A` and `B`.
+Return an IndexSet with indices that are common between the indices of `A` and `B` (the set intersection, similar to `Base.intersect`).
 
 Optionally, specify the desired number of indices as `Order(N)`, which adds a check and can be a bit more efficient.
 """
@@ -735,6 +868,13 @@ commoninds(::Order{N}, A...; kwargs...) where {N} =
   intersect(Order(N), itensor2inds.(A)...; kwargs...)
 
 # firstintersect
+"""
+    commonind(A, B; kwargs...)
+
+Return the first `Index` common between the indices of `A` and `B`.
+
+See also [`commoninds`](@ref).
+"""
 commonind(A...; kwargs...) =
   firstintersect(itensor2inds.(A)...; kwargs...)
 
@@ -743,7 +883,7 @@ commonind(A...; kwargs...) =
     noncommoninds(A, B; kwargs...)
     noncommoninds(::Order{N}, A, B; kwargs...)
 
-Return an IndexSet with indices that are not common between the indices of `A` and `B` (the symmetric set difference).
+Return an IndexSet with indices that are not common between the indices of `A` and `B` (the symmetric set difference, similar to `Base.symdiff`).
 
 Optionally, specify the desired number of indices as `Order(N)`, which adds a check and can be a bit more efficient.
 """
@@ -754,6 +894,13 @@ noncommoninds(::Order{N}, A...; kwargs...) where {N} =
   IndexSet{N}(symdiff(itensor2inds.(A)...; kwargs...)...)
 
 # firstsymdiff
+"""
+    noncommonind(A, B; kwargs...)
+
+Return the first `Index` not common between the indices of `A` and `B`.
+
+See also [`noncommoninds`](@ref).
+"""
 noncommonind(A...; kwargs...) =
   getfirst(symdiff(itensor2inds.(A)...; kwargs...))
 
@@ -762,7 +909,7 @@ noncommonind(A...; kwargs...) =
     uniqueinds(A, B; kwargs...)
     uniqueinds(::Order{N}, A, B; kwargs...)
 
-Return an IndexSet with indices that are unique to the set of indices of `A` and not in `B` (the set difference).
+Return an IndexSet with indices that are unique to the set of indices of `A` and not in `B` (the set difference, similar to `Base.setdiff`).
 
 Optionally, specify the desired number of indices as `Order(N)`, which adds a check and can be a bit more efficient.
 """
@@ -773,6 +920,13 @@ uniqueinds(::Order{N}, A...; kwargs...) where {N} =
   setdiff(Order(N), ITensors.itensor2inds.(A)...; kwargs...)
 
 # firstsetdiff
+"""
+    uniqueind(A, B; kwargs...)
+
+Return the first `Index` unique to the set of indices of `A` and not in `B`.
+
+See also [`uniqueinds`](@ref).
+"""
 uniqueind(A...; kwargs...) =
   firstsetdiff(itensor2inds.(A)...; kwargs...)
 
@@ -781,7 +935,7 @@ uniqueind(A...; kwargs...) =
     unioninds(A, B; kwargs...)
     unioninds(::Order{N}, A, B; kwargs...)
 
-Return an IndexSet with indices that are the union of the indices of `A` and `B`.
+Return an IndexSet with indices that are the union of the indices of `A` and `B` (the set union, similar to `Base.union`).
 
 Optionally, specify the desired number of indices as `Order(N)`, which adds a check and can be a bit more efficient.
 """
@@ -792,6 +946,13 @@ unioninds(::Order{N}, A...; kwargs...) where {N} =
   IndexSet{N}(union(ITensors.itensor2inds.(A)...; kwargs...)...)
 
 # firstunion
+"""
+    unionind(A, B; kwargs...)
+
+Return the first `Index` in the union of the indices of `A` and `B`.
+
+See also [`unioninds`](@ref).
+"""
 unionind(A...; kwargs...) =
   getfirst(union(itensor2inds.(A)...; kwargs...))
 
@@ -808,44 +969,21 @@ filterinds(A::ITensor) = inds(A)
 inds(A...; kwargs...) = filterinds(A...; kwargs...)
 
 # in-place versions of priming and tagging
-for fname in (:prime,
-              :setprime,
-              :noprime,
-              :mapprime,
-              :swapprime,
-              :addtags,
-              :removetags,
-              :replacetags,
-              :settags,
-              :swaptags,
-              :replaceind,
-              :replaceinds,
-              :swapind,
-              :swapinds)
+for fname in (:prime, :setprime, :noprime, :replaceprime, :swapprime,
+              :addtags, :removetags, :replacetags, :settags, :swaptags,
+              :replaceind, :replaceinds, :swapind, :swapinds)
   @eval begin
-    $fname(f::Function,
-           A::ITensor,
-           args...) = setinds(A,$fname(f,
-                                       inds(A),
-                                       args...))
+    $fname(f::Function, A::ITensor, args...) =
+      setinds(A, $fname(f, inds(A), args...))
 
-    $(Symbol(fname,:!))(f::Function,
-                        A::ITensor,
-                        args...) = setinds!(A,$fname(f,
-                                                     inds(A),
-                                                     args...))
+    $(Symbol(fname, :!))(f::Function, A::ITensor, args...) =
+      setinds!(A, $fname(f, inds(A), args...))
 
-    $fname(A::ITensor,
-           args...;
-           kwargs...) = setinds(A,$fname(inds(A),
-                                         args...;
-                                         kwargs...))
+    $fname(A::ITensor, args...; kwargs...) =
+      setinds(A, $fname(inds(A), args...; kwargs...))
 
-    $(Symbol(fname,:!))(A::ITensor,
-                        args...;
-                        kwargs...) = setinds!(A,$fname(inds(A),
-                                                       args...;
-                                                       kwargs...))
+    $(Symbol(fname, :!))(A::ITensor, args...; kwargs...) =
+      setinds!(A, $fname(inds(A), args...; kwargs...))
   end
 end
 
@@ -856,93 +994,99 @@ Optionally, only modify the indices with the specified keyword arguments.
 - `tags = nothing`: if specified, only modify Index `i` if `hastags(i, tags) == true`. 
 - `plev = nothing`: if specified, only modify Index `i` if `hasplev(i, plev) == true`.
 
-In both versions above, the ITensor storage is not modified or copied (so the first version returns an ITensor with a view of the original storage).
+The ITensor functions come in two versions, `f` and `f!`. The latter modifies the ITensor in-place. In both versions, the ITensor storage is not modified or copied (so it returns an ITensor with a view of the original storage).
 """
 
 @doc """
-    prime(A::ITensor, plinc::Int = 1; <keyword arguments>) -> ITensor
+    prime[!](A::ITensor, plinc::Int = 1; <keyword arguments>) -> ITensor
 
-    prime!(A::ITensor, plinc::Int = 1; <keyword arguments>)
+    prime(is::IndexSet, plinc::Int = 1; <keyword arguments>) -> IndexSet
 
-Increase the prime level of the indices of an ITensor.
+Increase the prime level of the indices of an ITensor or IndexSet.
 
 $priming_tagging_doc
 """ prime(::ITensor, ::Any...)
 
 @doc """
-    setprime(A::ITensor, plev::Int; <keyword arguments>) -> ITensor
+    setprime[!](A::ITensor, plev::Int; <keyword arguments>) -> ITensor
 
-    setprime!(A::ITensor, plev::Int; <keyword arguments>)
+    setprime(is::IndexSet, plev::Int; <keyword arguments>) -> IndexSet
 
-Set the prime level of the indices of an ITensor.
+Set the prime level of the indices of an ITensor or IndexSet.
 
 $priming_tagging_doc
 """ setprime(::ITensor, ::Any...)
 
 @doc """
-    noprime(A::ITensor; <keyword arguments>) -> ITensor
+    noprime[!](A::ITensor; <keyword arguments>) -> ITensor
 
-    noprime!(A::ITensor; <keyword arguments>)
+    noprime(is::IndexSet; <keyword arguments>) -> IndexSet
 
-Set the prime level of the indices of an ITensor to zero.
+Set the prime level of the indices of an ITensor or IndexSet to zero.
 
 $priming_tagging_doc
 """ noprime(::ITensor, ::Any...)
 
 @doc """
-    mapprime(A::ITensor, plold::Int, plnew::Int; <keyword arguments>) -> ITensor
+    replaceprime[!](A::ITensor, plold::Int, plnew::Int; <keyword arguments>) -> ITensor
+    replaceprime[!](A::ITensor, plold => plnew; <keyword arguments>) -> ITensor
+    mapprime[!](A::ITensor, <arguments>; <keyword arguments>) -> ITensor
 
-    mapprime!(A::ITensor, plold::Int, plnew::Int; <keyword arguments>)
+    replaceprime(is::IndexSet, plold::Int, plnew::Int; <keyword arguments>) -> IndexSet
+    replaceprime(is::IndexSet, plold => plnew; <keyword arguments>) -> IndexSet
+    mapprime(is::IndexSet, <arguments>; <keyword arguments>) -> IndexSet
 
-Set the prime level of the indices of an ITensor with prime level `plold` to `plnew`.
+Set the prime level of the indices of an ITensor or IndexSet with prime level `plold` to `plnew`.
 
 $priming_tagging_doc
 """ mapprime(::ITensor, ::Any...)
 
 @doc """
-    swapprime(A::ITensor, pl1::Int, pl2::Int; <keyword arguments>) -> ITensor
+    swapprime[!](A::ITensor, pl1::Int, pl2::Int; <keyword arguments>) -> ITensor
+    swapprime[!](A::ITensor, pl1 => pl2; <keyword arguments>) -> ITensor
 
-    swapprime!(A::ITensor, pl1::Int, pl2::Int; <keyword arguments>)
+    swapprime(is::ITensor, pl1::Int, pl2::Int; <keyword arguments>) -> IndexSet
+    swapprime(is::ITensor, pl1 => pl2; <keyword arguments>) -> IndexSet
 
-Set the prime level of the indices of an ITensor with prime level `pl1` to `pl2`, and those with prime level `pl2` to `pl1`.
+Set the prime level of the indices of an ITensor or IndexSetwith prime level `pl1` to `pl2`, and those with prime level `pl2` to `pl1`.
 
 $priming_tagging_doc
 """ swapprime(::ITensor, ::Any...)
 
 @doc """
-    addtags(A::ITensor, ts::String; <keyword arguments>) -> ITensor
+    addtags[!](A::ITensor, ts::String; <keyword arguments>) -> ITensor
 
-    addtags!(A::ITensor, ts::String; <keyword arguments>)
+    addtags(is::IndexSet, ts::String; <keyword arguments>) -> IndexSet
 
-Add the tags `ts` to the indices of an ITensor.
+Add the tags `ts` to the indices of an ITensor or IndexSet.
 
 $priming_tagging_doc
 """ addtags(::ITensor, ::Any...)
 
 @doc """
-    removetags(A::ITensor, ts::String; <keyword arguments>) -> ITensor
+    removetags[!](A::ITensor, ts::String; <keyword arguments>) -> ITensor
 
-    removetags!(A::ITensor, ts::String; <keyword arguments>)
+    removetags(is::IndexSet, ts::String; <keyword arguments>) -> IndexSet
 
-Remove the tags `ts` from the indices of an ITensor.
+Remove the tags `ts` from the indices of an ITensor or IndexSet.
 
 $priming_tagging_doc
 """ removetags(::ITensor, ::Any...)
 
 @doc """
-    settags(A::ITensor, ts::String; <keyword arguments>) -> ITensor
+    settags[!](A::ITensor, ts::String; <keyword arguments>) -> ITensor
 
-    settags!(A::ITensor, ts::String; <keyword arguments>)
+    settags(is::IndexSet, ts::String; <keyword arguments>) -> IndexSet
 
-Set the tags of the indices of an ITensor to `ts`.
+Set the tags of the indices of an ITensor or IndexSet to `ts`.
 
 $priming_tagging_doc
 """ settags(::ITensor, ::Any...)
 
 @doc """
-    replacetags(A::ITensor, tsold::String, tsnew::String; <keyword arguments>) -> ITensor
+    replacetags[!](A::ITensor, tsold::String, tsnew::String; <keyword arguments>) -> ITensor
 
-    replacetags!(A::ITensor, tsold::String, tsnew::String; <keyword arguments>)
+    replacetags(is::IndexSet, tsold::String, tsnew::String; <keyword arguments>) -> IndexSet
 
 Replace the tags `tsold` with `tsnew` for the indices of an ITensor.
 
@@ -950,9 +1094,9 @@ $priming_tagging_doc
 """ replacetags(::ITensor, ::Any...)
 
 @doc """
-    swaptags(A::ITensor, ts1::String, ts2::String; <keyword arguments>) -> ITensor
+    swaptags[!](A::ITensor, ts1::String, ts2::String; <keyword arguments>) -> ITensor
 
-    swaptags!(A::ITensor, ts1::String, ts2::String; <keyword arguments>)
+    swaptags(is::IndexSet, ts1::String, ts2::String; <keyword arguments>) -> IndexSet
 
 Swap the tags `ts1` with `ts2` for the indices of an ITensor.
 
@@ -960,9 +1104,7 @@ $priming_tagging_doc
 """ swaptags(::ITensor, ::Any...)
 
 @doc """
-    replaceind(A::ITensor, i1::Index, i2::Index) -> ITensor
-
-    replaceind!(A::ITensor, i1::Index, i2::Index)
+    replaceind[!](A::ITensor, i1::Index, i2::Index) -> ITensor
 
 Replace the Index `i1` with the Index `i2` in the ITensor.
 
@@ -1003,6 +1145,8 @@ The indices must have the same space (i.e. the same dimension and QNs, if applic
 The storage of the ITensor is not modified or copied (the output ITensor is a view of the input ITensor).
 """ swapinds(::ITensor, ::Any...)
 
+# XXX: rename to:
+# hastags(any, A, ts)
 """
     anyhastags(A::ITensor, ts::Union{String, TagSet})
     hastags(A::ITensor, ts::Union{String, TagSet})
@@ -1013,6 +1157,8 @@ anyhastags(A::ITensor, ts) = anyhastags(inds(A), ts)
 
 hastags(A::ITensor, ts) = hastags(inds(A), ts)
 
+# XXX: rename to:
+# hastags(all, A, ts)
 """
     allhastags(A::ITensor, ts::Union{String, TagSet})
 
@@ -1033,11 +1179,9 @@ function (A::ITensor == B::ITensor)
   return norm(A - B) == zero(promote_type(eltype(A),eltype(B)))
 end
 
-function isapprox(A::ITensor,
-                  B::ITensor;
-                  kwargs...)
-    B = permute(dense(B), inds(A))
-    return isapprox(array(A), array(B); kwargs...)
+function isapprox(A::ITensor, B::ITensor; kwargs...)
+  B = permute(dense(B), inds(A))
+  return isapprox(array(A), array(B); kwargs...)
 end
 
 randn!(T::ITensor) = randn!(tensor(T))
@@ -1152,7 +1296,14 @@ permute(T::ITensor,
 
 -(A::ITensor) = itensor(-tensor(A))
 
+function check_add_arrows(A::ITensor{N},B::ITensor{N}) where {N}
+  if hasqns(A) && hasqns(B)
+
+  end
+end
+
 function (A::ITensor{N} + B::ITensor{N}) where {N}
+  check_add_arrows(A,B)
   C = copy(A)
   C .+= B
   return C
@@ -1174,6 +1325,54 @@ end
 (A::ITensor - B::ITensor) =
   error("cannot subtract ITensors with different numbers of indices")
 
+function _contract(A::ITensor, B::ITensor)
+  (labelsA,labelsB) = compute_contraction_labels(inds(A),inds(B))
+  CT = contract(tensor(A),labelsA,tensor(B),labelsB)
+  C = itensor(CT)
+  warnTensorOrder = get_warn_order()
+  if !isnothing(warnTensorOrder) > 0 &&
+     order(C) >= warnTensorOrder
+     #@warn "Contraction resulted in ITensor with $(order(C)) indices, which is greater than or equal to the ITensor order warning threshold $warnTensorOrder. You can modify the threshold with functions like `set_warn_order!(::Int)`, `reset_warn_order!()`, and `disable_warn_order!()`."
+     println("Contraction resulted in ITensor with $(order(C)) indices, which is greater than or equal to the ITensor order warning threshold $warnTensorOrder. You can modify the threshold with functions like `set_warn_order!(::Int)`, `reset_warn_order!()`, and `disable_warn_order!()`.")
+     show(stdout, MIME"text/plain"(), stacktrace())
+     println()
+  end
+  return C
+end
+
+_contract(T::ITensor, ::Nothing) = T
+
+dag(::Nothing) = nothing
+
+iscombiner(T::ITensor) = (store(T) isa Combiner)
+
+isdiag(T::ITensor) = (store(T) isa Diag || store(T) isa DiagBlockSparse)
+
+function can_combine_contract(A::ITensor, B::ITensor)
+  return hasqns(A) && hasqns(B) &&
+         !iscombiner(A) && !iscombiner(B) &&
+         !isdiag(A) && !isdiag(B)
+end
+
+function combine_contract(A::ITensor, B::ITensor)
+  # Combine first before contracting
+  C = if can_combine_contract(A, B)
+    uniqueindsA = uniqueinds(A, B)
+    uniqueindsB = uniqueinds(B, A)
+    commonindsAB = commoninds(A, B)
+    combinerA = isempty(uniqueindsA) ? nothing : combiner(uniqueindsA)
+    combinerB = isempty(uniqueindsB) ? nothing : combiner(uniqueindsB)
+    combinerAB = isempty(commonindsAB) ? nothing : combiner(commonindsAB)
+    AC = _contract(_contract(A, combinerA), combinerAB)
+    BC = _contract(_contract(B, combinerB), dag(combinerAB))
+    CC = _contract(AC, BC)
+    _contract(_contract(CC, dag(combinerA)), dag(combinerB))
+  else
+    _contract(A, B)
+  end
+  return C
+end
+
 """
     A::ITensor * B::ITensor
 
@@ -1186,16 +1385,7 @@ modified such that they no longer compare equal - for more
 information see the documentation on Index objects.
 """
 function (A::ITensor * B::ITensor)
-  (labelsA,labelsB) = compute_contraction_labels(inds(A),inds(B))
-  CT = contract(tensor(A),labelsA,tensor(B),labelsB)
-  C = itensor(CT)
-  warnTensorOrder = get_warn_order()
-  if !isnothing(warnTensorOrder) > 0 &&
-     order(C) >= warnTensorOrder
-     @warn "Contraction resulted in ITensor with $(order(C)) indices, which is greater than or equal to the ITensor order warning threshold $warnTensorOrder. You can modify the threshold with functions like `set_warn_order!(::Int)`, `reset_warn_order!()`, and `disable_warn_order!()`."
-     show(stdout, MIME"text/plain"(), stacktrace())
-     println()
-  end
+  C = use_combine_contract() ? combine_contract(A, B) : _contract(A, B)
   return C
 end
 
@@ -1204,29 +1394,27 @@ end
 #  A2::ITensor,
 #  A3::ITensor, As::ITensor...)
 
+# XXX: rename contract!
 function mul!(C::ITensor, A::ITensor, B::ITensor,
               α::Number, β::Number=0)
-  (labelsC,labelsA,labelsB) = compute_contraction_labels(inds(C),
-                                                         inds(A),
-                                                         inds(B))
-  CT = NDTensors.contract!!(tensor(C), labelsC,
-                          tensor(A), labelsA,
-                          tensor(B), labelsB,
-                          α, β)
-  C = itensor(CT)
+  labelsCAB = compute_contraction_labels(inds(C), inds(A), inds(B))
+  labelsC, labelsA, labelsB = labelsCAB
+  CT = NDTensors.contract!!(tensor(C), labelsC, tensor(A), labelsA,
+                            tensor(B), labelsB, α, β)
+  setstore!(C, store(CT))
+  setinds!(C, inds(C))
   return C
 end
 
 # This is necessary for now since not all types implement contract!!
 # with non-trivial α and β
 function mul!(C::ITensor, A::ITensor, B::ITensor)
-  (labelsC,labelsA,labelsB) = compute_contraction_labels(inds(C),
-                                                         inds(A),
-                                                         inds(B))
-  CT = NDTensors.contract!!(tensor(C), labelsC,
-                          tensor(A), labelsA,
-                          tensor(B), labelsB)
-  C = itensor(CT)
+  labelsCAB = compute_contraction_labels(inds(C), inds(A), inds(B))
+  labelsC, labelsA, labelsB = labelsCAB
+  CT = NDTensors.contract!!(tensor(C), labelsC, tensor(A), labelsA,
+                            tensor(B), labelsB)
+  setstore!(C, store(CT))
+  setinds!(C, inds(C))
   return C
 end
 
@@ -1235,8 +1423,7 @@ dot(A::ITensor, B::ITensor) = (dag(A)*B)[]
 # Returns a tuple of pairs of indices, where the pairs
 # are determined by the prime level pairs `plev` and
 # tag pairs `tags`.
-function indpairs(T::ITensor;
-                  plev::Pair{Int, Int} = 0 => 1,
+function indpairs(T::ITensor; plev::Pair{Int, Int} = 0 => 1,
                   tags::Pair = ts"" => ts"")
   is1 = filterinds(T; plev = first(plev), tags = first(tags))
   is2 = filterinds(T, plev = last(plev), tags = last(tags))
@@ -1252,8 +1439,7 @@ end
 # Trace an ITensor over pairs of indices determined by
 # the prime levels and tags. Indices that are not in pairs
 # are not traced over, corresponding to a "batched" trace.
-function tr(T::ITensor;
-            plev::Pair{Int, Int} = 0 => 1,
+function tr(T::ITensor; plev::Pair{Int, Int} = 0 => 1,
             tags::Pair = ts"" => ts"")
   trpairs = indpairs(T; plev = plev, tags = tags)
   for indpair in trpairs
@@ -1284,7 +1470,7 @@ computed internally.
 function exp(A::ITensor{N}, Linds, Rinds; kwargs...) where {N}
   ishermitian=get(kwargs,:ishermitian,false)
 
-  @debug begin
+  @debug_check begin
     if hasqns(A)
       @assert flux(A) == QN()
     end
@@ -1543,6 +1729,17 @@ function map!(f::Function,
               T2::ITensor{N}) where {N}
   R !== T1 && error("`map!(f, R, T1, T2)` only supports `R === T1` right now")
   perm = NDTensors.getperm(inds(R),inds(T2))
+
+  if hasqns(T2) && hasqns(R)
+    # Check that Index arrows match
+    for (n,p) in enumerate(perm)
+      if dir(inds(R)[n]) != dir(inds(T2)[p])
+        #println("Mismatched Index: \n$(inds(R)[n])")
+        error("Index arrows must be the same to add, subtract, map, or scale QN ITensors")
+      end
+    end
+  end
+
   TR,TT = tensor(R),tensor(T2)
 
   # TODO: Include type promotion from α
@@ -1604,6 +1801,8 @@ mul!(R::ITensor, T::ITensor, α::Number) = (R .= T .* α)
 
 hasqns(T::ITensor) = hasqns(inds(T))
 
+eachnzblock(T::ITensor) = eachnzblock(tensor(T))
+
 nnz(T::ITensor) = nnz(tensor(T))
 
 nnzblocks(T::ITensor) = nnzblocks(tensor(T))
@@ -1625,9 +1824,8 @@ If the ITensor is empty or it has no QNs, returns `nothing`.
 """
 function flux(T::ITensor)
   (!hasqns(T) || isempty(T)) && return nothing
-  @debug checkflux(T)
-  bofs = blockoffsets(T)
-  block1 = nzblock(bofs, 1)
+  @debug_check checkflux(T)
+  block1 = first(eachnzblock(T))
   return flux(T, block1)
 end
 
@@ -1647,10 +1845,10 @@ function checkflux(T::ITensor)
   return checkflux(T, fluxTb1)
 end
 
-function addblock!(T::ITensor, args...)
+function insertblock!(T::ITensor, args...)
   (!isnothing(flux(T)) && flux(T) ≠ flux(T, args...)) && 
    error("Block does not match current flux")
-  TR = addblock!!(tensor(T), args...)
+  TR = insertblock!!(tensor(T), args...)
   setstore!(T, store(TR))
   return T
 end
@@ -1798,10 +1996,6 @@ function readcpp(io::IO,
   end
 end
 
-function setwarnorder!(ord::Int)
-  ITensors.GLOBAL_PARAMS["WarnTensorOrder"] = ord
-end
-
 function HDF5.write(parent::Union{HDF5File,HDF5Group},
                     name::AbstractString,
                     T::ITensor)
@@ -1841,24 +2035,4 @@ function HDF5.read(parent::Union{HDF5File,HDF5Group},
 
   return itensor(store,inds)
 end
-
-#
-# Deprecations
-#
-
-@deprecate findindex(args...; kwargs...) firstind(args...; kwargs...)
-
-@deprecate findinds(args...; kwargs...) inds(args...; kwargs...)
-
-@deprecate commonindex(args...; kwargs...) commonind(args...; kwargs...)
-
-@deprecate uniqueindex(args...; kwargs...) uniqueind(args...; kwargs...)
-
-@deprecate replaceindex!(args...; kwargs...) replaceind!(args...; kwargs...)
-
-@deprecate siteindex(args...; kwargs...) siteind(args...; kwargs...)
-
-@deprecate linkindex(args...; kwargs...) linkind(args...; kwargs...)
-
-@deprecate matmul(A::ITensor, B::ITensor) product(A, B)
 

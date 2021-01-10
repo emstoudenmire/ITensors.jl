@@ -1,6 +1,8 @@
 using ITensors
+using Printf
+using Random
 
-include("../src/electronk.jl")
+Random.seed!(1234)
 
 let
   N = 100

@@ -9,11 +9,11 @@ mutable struct MPS <: AbstractMPS
   data::Vector{ITensor}
   llim::Int
   rlim::Int
-  function MPS(A::Vector{<:ITensor},
-               llim::Int = 0,
-               rlim::Int = length(A) + 1)
-    new(A, llim, rlim)
-  end
+end
+
+function MPS(A::Vector{<:ITensor};
+             ortho_lims::UnitRange = 1:length(A))
+  return MPS(A, first(ortho_lims)-1, last(ortho_lims)+1)
 end
 
 @doc """
@@ -35,7 +35,8 @@ MPS() = MPS(ITensor[], 0, 0)
 Construct an MPS with N sites with default constructed
 ITensors.
 """
-MPS(N::Int) = MPS(Vector{ITensor}(undef, N))
+MPS(N::Int; ortho_lims::UnitRange = 1:N) =
+  MPS(Vector{ITensor}(undef, N); ortho_lims = ortho_lims)
 
 """
     MPS([::Type{ElT} = Float64, ]sites)
@@ -99,7 +100,7 @@ function randomizeMPS!(M::MPS, sites::Vector{<:Index}, linkdim=1)
       G = randomU(s1,s2)
       T = noprime(G*M[b]*M[b+db])
       rinds = uniqueinds(M[b],M[b+db])
-      U,S,V = svd(T,rinds;maxdim=linkdim)
+      U,S,V = svd(T,rinds;maxdim=linkdim, utags = "Link,l=$(b-1)")
       M[b] = U
       M[b+db] = S*V
       M[b+db] /= norm(M[b+db])
@@ -336,20 +337,42 @@ productMPS(sites::Vector{ <: Index},
 """
     siteind(M::MPS, j::Int; kwargs...)
 
-Get the site Index of the MPS.
+Get the first site Index of the MPS. Return `nothing` if none is found.
 """
-siteind(M::MPS, j::Int; kwargs...) = firstsiteind(M, j; kwargs...)
+siteind(M::MPS, j::Int; kwargs...) = siteind(first, M, j; kwargs...)
+
+"""
+    siteind(::typeof(only), M::MPS, j::Int; kwargs...)
+
+Get the only site Index of the MPS. Return `nothing` if none is found.
+"""
+function siteind(::typeof(only), M::MPS, j::Int; kwargs...)
+  is = siteinds(M, j; kwargs...)
+  if isempty(is)
+    return nothing
+  end
+  return only(is)
+end
 
 """
     siteinds(M::MPS)
+    siteinds(::typeof(first), M::MPS)
 
-Get a vector of the site indices of the MPS.
+Get a vector of the first site Index found on each tensor of the MPS.
+
+    siteinds(::typeof(only), M::MPS)
+
+Get a vector of the only site Index found on each tensor of the MPS. Errors if more than one is found.
+
+    siteinds(::typeof(all), M::MPS)
+
+Get a vector of the all site Indices found on each tensor of the MPS. Returns a Vector of IndexSets.
 """
-siteinds(M::MPS) = [siteind(M, j) for j in 1:length(M)]
+siteinds(M::MPS; kwargs...) = siteinds(first, M; kwargs...)
 
 function replace_siteinds!(M::MPS, sites)
   for j in eachindex(M)
-    sj = siteind(M, j)
+    sj = siteind(only, M, j)
     replaceind!(M[j], sj, sites[j])
   end
   return M
@@ -472,7 +495,7 @@ function sample(m::MPS)
     while n <= d
       projn = ITensor(s)
       projn[s[n]] = 1.0
-      An = A*projn
+      An = A * dag(projn)
       pn = real(scalar(dag(An)*An))
       pdisc += pn
       (r < pdisc) && break

@@ -12,14 +12,18 @@ struct SiteOp
   site::Int
 end
 
+convert(::Type{SiteOp}, op::Pair{String, Int}) =
+  SiteOp(first(op), last(op))
+
 name(s::SiteOp) = s.name
 site(s::SiteOp) = s.site
 
-Base.show(io::IO,s::SiteOp) = print(io,"\"$(name(s))\"($(site(s)))")
+show(io::IO,s::SiteOp) = print(io,"\"$(name(s))\"($(site(s)))")
 
-Base.:(==)(s1::SiteOp,s2::SiteOp) = (s1.site==s2.site && s1.name==s2.name)
+(s1::SiteOp == s2::SiteOp) =
+  (s1.site == s2.site && s1.name == s2.name)
 
-function Base.isless(s1::SiteOp,s2::SiteOp)::Bool
+function isless(s1::SiteOp, s2::SiteOp)
   if site(s1) != site(s2)
     return site(s1) < site(s2)
   end
@@ -32,8 +36,7 @@ end
 
 const OpTerm = Vector{SiteOp}
 
-function Base.:(==)(o1::OpTerm,
-                    o2::OpTerm)
+function (o1::OpTerm == o2::OpTerm)
   (length(o1)==length(o2)) || return false
   for n=1:length(o1)
     (o1[n]!=o2[n]) && return false
@@ -41,8 +44,7 @@ function Base.:(==)(o1::OpTerm,
   return true
 end
 
-function Base.isless(o1::OpTerm,
-                     o2::OpTerm)::Bool
+function isless(o1::OpTerm, o2::OpTerm)
   if length(o1) != length(o2) 
     return length(o1) < length(o2)
   end
@@ -77,14 +79,13 @@ end
 coef(op::MPOTerm) = op.coef
 ops(op::MPOTerm) = op.ops
 
-Base.copy(t::MPOTerm) = MPOTerm(coef(t),copy(ops(t)))
+copy(t::MPOTerm) = MPOTerm(coef(t),copy(ops(t)))
 
-function Base.:(==)(t1::MPOTerm,
-                    t2::MPOTerm)
+function (t1::MPOTerm == t2::MPOTerm)
   return coef(t1) ≈ coef(t2) && ops(t1) == ops(t2)
 end
 
-function Base.isless(t1::MPOTerm, t2::MPOTerm)::Bool
+function isless(t1::MPOTerm, t2::MPOTerm)
   if ops(t1) == ops(t2)
     if coef(t1) ≈ coef(t2)
       return false
@@ -179,6 +180,8 @@ AutoMPO() = AutoMPO(Vector{MPOTerm}())
 data(ampo::AutoMPO) = ampo.data
 setdata!(ampo::AutoMPO,ndata) = (ampo.data = ndata)
 
+push!(ampo::AutoMPO, term) = push!(data(ampo), term)
+
 Base.:(==)(ampo1::AutoMPO,
            ampo2::AutoMPO) = data(ampo1) == data(ampo2)
 
@@ -257,23 +260,27 @@ function add!(ampo::AutoMPO,
   return
 end
 
-add!(ampo::AutoMPO,
-     op1::String, i1::Int,
-     op2::String, i2::Int) = add!(ampo,1.0,op1,i1,op2,i2)
+add!(ampo::AutoMPO, op1::String, i1::Int, op2::String, i2::Int) =
+  add!(ampo,1.0,op1,i1,op2,i2)
 
 function add!(ampo::AutoMPO,
               coef::Number,
               op1::String, i1::Int,
               op2::String, i2::Int,
               ops...)
-  push!(data(ampo), MPOTerm(coef, op1, i1, op2, i2, ops...))
+  push!(ampo, MPOTerm(coef, op1, i1, op2, i2, ops...))
   return ampo
 end
 
-add!(ampo::AutoMPO,
-     op1::String, i1::Int,
-     op2::String, i2::Int,
-     ops...) = add!(ampo, 1.0, op1, i1, op2, i2, ops...)
+function add!(ampo::AutoMPO, op1::String, i1::Int,
+              op2::String, i2::Int, ops...)
+  return add!(ampo, 1.0, op1, i1, op2, i2, ops...)
+end
+
+function add!(ampo::AutoMPO, ops::Vector{Pair{String,Int64}})
+  push!(ampo, MPOTerm(1.0, ops))
+  return ampo
+end
 
 """
     subtract!(ampo::AutoMPO,
@@ -303,21 +310,25 @@ function subtract!(ampo::AutoMPO,
                    op1::String, i1::Int,
                    op2::String, i2::Int,
                    ops...)
-  push!(data(ampo), -MPOTerm(coef, op1, i1, op2, i2, ops...))
+  push!(ampo, -MPOTerm(coef, op1, i1, op2, i2, ops...))
   return ampo
 end
 
-Base.:-(t::MPOTerm) = MPOTerm(-coef(t), ops(t))
+-(t::MPOTerm) = MPOTerm(-coef(t), ops(t))
 
-function Base.:+(ampo::AutoMPO,
-                 term::Tuple)
+function (ampo::AutoMPO + term::Tuple)
   ampo_plus_term = copy(ampo)
   add!(ampo_plus_term, term...)
   return ampo_plus_term
 end
 
-function Base.:-(ampo::AutoMPO,
-                 term::Tuple)
+function (ampo::AutoMPO + term::Vector{Pair{String,Int64}})
+  ampo_plus_term = copy(ampo)
+  add!(ampo_plus_term, term)
+  return ampo_plus_term
+end
+
+function (ampo::AutoMPO - term::Tuple)
   ampo_plus_term = copy(ampo)
   subtract!(ampo_plus_term, term...)
   return ampo_plus_term
@@ -766,9 +777,11 @@ function qn_svdMPO(ampo::AutoMPO,
     rl = llinks[n+1]
 
     function defaultMat(ll,rl,lqn,rqn) 
-      ldim = qnblockdim(ll,lqn)
-      rdim = qnblockdim(rl,rqn)
-      return zeros(ValType,ldim,rdim)
+      #ldim = qnblockdim(ll,lqn)
+      #rdim = qnblockdim(rl,rqn)
+      ldim = blockdim(ll, lqn)
+      rdim = blockdim(rl, rqn)
+      return zeros(ValType, ldim, rdim)
     end
 
     idTerm = [SiteOp("Id",n)]
@@ -835,13 +848,16 @@ function qn_svdMPO(ampo::AutoMPO,
         Op .*= -1
       end
 
-      rn = qnblocknum(ll,rq)
-      cn = qnblocknum(rl,cq)
+      #rn = qnblocknum(ll,rq)
+      #cn = qnblocknum(rl,cq)
+      rn = block(first, ll, rq)
+      cn = block(first, rl, cq)
 
       #TODO: wrap following 3 lines into a function
-      block = (rn,cn)
-      T = BlockSparseTensor(ValType,[block],IndexSet(dag(ll),rl))
-      blockview(T,block) .= M
+      _block = Block(rn, cn)
+      T = BlockSparseTensor(ValType,[_block],IndexSet(dag(ll),rl))
+      #blockview(T, _block) .= M
+      T[_block] .= M
 
       IT = itensor(T)
       H[n] += IT * Op
@@ -864,8 +880,12 @@ end #qn_svdMPO
 function sorteachterm!(ampo::AutoMPO, sites)
   ampo = copy(ampo)
   isless_site(o1::SiteOp, o2::SiteOp) = site(o1) < site(o2)
+  N = length(sites)
   for t in data(ampo)
     Nt = length(t.ops)
+    prevsite = N+1 #keep track of whether we are switching
+                   #to a new site to make sure F string
+                   #is only placed at most once for each site
 
     # Sort operators in t by site order,
     # and keep the permutation used, perm, for analysis below
@@ -877,20 +897,20 @@ function sorteachterm!(ampo::AutoMPO, sites)
     # Identify fermionic operators,
     # zeroing perm for bosonic operators,
     # and inserting string "F" operators
-    parity = +1
+    rhs_parity = +1
     for n=Nt:-1:1
       fermionic = has_fermion_string(name(t.ops[n]),
                                      sites[site(t.ops[n])])
       if fermionic
-        parity = -parity
+        rhs_parity = -rhs_parity
       else
         # Ignore bosonic operators in perm
         # by zeroing corresponding entries
         perm[n] = 0
       end
     end
-    if parity == -1
-      error("Parity-odd fermionic terms not yet supported by AutoMPO")
+    if rhs_parity == -1
+      error("Total parity-odd fermionic terms not yet supported by AutoMPO")
     end
 
     # Keep only fermionic op positions (non-zero entries)
@@ -960,6 +980,4 @@ function MPO(ampo::AutoMPO,
   end
   return svdMPO(ampo,sites;kwargs...)
 end
-
-@deprecate toMPO(args...; kwargs...) MPO(args...; kwargs...)
 

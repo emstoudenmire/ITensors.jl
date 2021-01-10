@@ -4,21 +4,17 @@
 IndexSet(::Vector{<:Index})
 ```
 
-## Priming and tagging methods
+## [Priming and tagging](@id Priming_and_tagging_IndexSet)
+
+Documentation for IndexSet priming and tagging methods can be found in the ITensor [Priming and tagging](@ref Priming_and_tagging_ITensor) section.
 
 ```@docs
-prime(::IndexSet, ::Int)
 map(::Function, ::IndexSet)
 ```
 
 ## Set operations
 
-```@docs
-intersect(::IndexSet, ::IndexSet)
-firstintersect(::IndexSet, ::IndexSet)
-setdiff(::IndexSet, ::IndexSet)
-firstsetdiff(::IndexSet, ::IndexSet)
-```
+Documentation for IndexSet set operations can be found in the ITensor [IndexSet set operations](@ref) section.
 
 ## Subsets
 

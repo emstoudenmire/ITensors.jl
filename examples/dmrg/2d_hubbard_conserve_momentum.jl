@@ -1,4 +1,7 @@
 using ITensors
+using Random
+
+Random.seed!(1234)
 
 include(joinpath("..", "src", "electronk.jl"))
 include(joinpath("..", "src", "hubbard.jl"))
@@ -8,7 +11,8 @@ function main(; Nx::Int = 6,
                 U::Float64 = 4.0,
                 t::Float64 = 1.0,
                 maxdim::Int = 3000,
-                conserve_ky = true)
+                conserve_ky = true,
+                use_splitblocks = true)
   N = Nx * Ny
 
   sweeps = Sweeps(10)
@@ -25,6 +29,18 @@ function main(; Nx::Int = 6,
 
   ampo = hubbard(Nx = Nx, Ny = Ny, t = t, U = U, ky = true) 
   H = MPO(ampo, sites)
+
+  # This step makes the MPO more sparse.
+  # It generally improves DMRG performance
+  # at large bond dimensions but makes DMRG slower at
+  # small bond dimensions.
+  if use_splitblocks
+    H = splitblocks(linkinds, H)
+  end
+
+  # Number of structural nonzero elements in a bulk
+  # Hamiltonian MPO tensor
+  @show nnz(H[end÷2])
 
   # Create start state
   state = Vector{String}(undef, N)
@@ -48,7 +64,7 @@ function main(; Nx::Int = 6,
 
   psi0 = randomMPS(sites, state, 10)
 
-  energy, psi = dmrg(H, psi0, sweeps; svd_alg = "divide_and_conquer")
+  energy, psi = @time dmrg(H, psi0, sweeps; svd_alg = "divide_and_conquer")
   @show Nx, Ny
   @show t, U
   @show flux(psi)

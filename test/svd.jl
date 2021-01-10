@@ -1,5 +1,8 @@
-using ITensors,
-      Test
+using ITensors
+using Test
+using Suppressor
+
+include("util.jl")
 
 @testset "SVD Algorithms" begin
 
@@ -15,7 +18,7 @@ using ITensors,
   @testset "Real Matrix" begin
     M = rand(10,20)
     U,S,V = NDTensors.svd_recursive(M)
-    @test norm(U*LinearAlgebra.Diagonal(S)*V'-M) < 1E-13
+    @test norm(U*LinearAlgebra.Diagonal(S)*V'-M) < 1E-12
 
     M = rand(20,10)
     U,S,V = NDTensors.svd_recursive(M)
@@ -62,6 +65,23 @@ using ITensors,
 
     U,S,V = svd(T,(u1,t1))
     @test norm(U*S*V-T)/norm(T) < 1E-10
+  end
+
+  @testset "Ill-conditioned matrix" begin
+    d = 5000
+    i = Index(d, "i")
+    T = itensor(make_illconditioned_matrix(dim(i)), i', i)
+
+    @suppress begin
+      F = svd(T, i'; alg = "divide_and_conquer")
+    end
+    # Depending on the LAPACK implementation,
+    # this sometimes works so don't test it
+    #@test isnothing(F)
+
+    F = svd(T, i'; alg = "qr_iteration")
+    @test !isnothing(F)
+    @test F.U * F.S * F.V ≈ T
   end
 
 end

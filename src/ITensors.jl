@@ -22,6 +22,14 @@ using StaticArrays
 using TimerOutputs
 
 #####################################
+# Directory helper functions (useful for
+# running examples)
+#
+src_dir() = dirname(pathof(@__MODULE__))
+dir() = joinpath(src_dir(), "..")
+examples_dir() = joinpath(dir(), "examples")
+
+#####################################
 # Exports
 #
 include("exports.jl")
@@ -35,6 +43,11 @@ include("imports.jl")
 # Global Variables
 #
 include("global_variables.jl")
+
+#####################################
+# Debug checking
+#
+include("debug_checks.jl")
 
 #####################################
 # Index and IndexSet
@@ -92,6 +105,11 @@ include("physics/fermions.jl")
 include("physics/autompo.jl")
 
 #####################################
+# Deprecations
+#
+include("deprecated.jl")
+
+#####################################
 # Argument parsing
 #
 include("argsdict/argsdict.jl")
@@ -106,6 +124,10 @@ include("packagecompile/compile.jl")
 # use only
 #
 include("developer_tools.jl")
+
+function __init__()
+  resize!(empty!(INDEX_ID_RNGs), Threads.nthreads()) # ensures that we didn't save a bad object
+end
 
 #####################################
 # Precompile certain functions

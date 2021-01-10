@@ -1,5 +1,23 @@
 
+#const IDType = UInt128
 const IDType = UInt64
+
+# Custom RNG for Index id
+# Vector of RNGs, one for each thread
+const INDEX_ID_RNGs = MersenneTwister[]
+@inline index_id_rng() = index_id_rng(Threads.threadid())
+@noinline function index_id_rng(tid::Int)
+  0 < tid <= length(INDEX_ID_RNGs) || _index_id_rng_length_assert()
+  if @inbounds isassigned(INDEX_ID_RNGs, tid)
+    @inbounds MT = INDEX_ID_RNGs[tid]
+  else
+    MT = MersenneTwister()
+    @inbounds INDEX_ID_RNGs[tid] = MT
+  end
+  return MT
+end
+@noinline _index_id_rng_length_assert() =  @assert false "0 < tid <= length(INDEX_ID_RNGs)"
+
 
 """
 An `Index` represents a single tensor index with fixed dimension `dim`. Copies of an Index compare equal unless their 
@@ -54,7 +72,7 @@ julia> tags(i)
 ```
 """
 function Index(dim::Int; tags="", plev=0)
-  return Index(rand(IDType), dim, Neither, tags, plev)
+  return Index(rand(index_id_rng(), IDType), dim, Neither, tags, plev)
 end
 
 """
@@ -182,7 +200,7 @@ Produces an `Index` with the same properties (dimension or QN structure)
 but with a new `id`.
 """
 sim(i::Index; tags = copy(tags(i)), plev = plev(i), dir = dir(i)) =
-  Index(rand(IDType), copy(space(i)), dir, tags, plev)
+  Index(rand(index_id_rng(), IDType), copy(space(i)), dir, tags, plev)
 
 """
     dag(i::Index)
@@ -305,11 +323,9 @@ julia> hastags(j, "n=4,Link")
 true
 ```
 """
-settags(i::Index, ts) = Index(id(i),
-                              copy(space(i)),
-                              dir(i),
-                              ts,
-                              plev(i))
+settags(i::Index, ts) = Index(id(i), copy(space(i)), dir(i), ts, plev(i))
+
+setspace(i::Index, s) = Index(id(i), s, dir(i), tags(i), plev(i))
 
 """
     addtags(i::Index,ts)
@@ -319,8 +335,7 @@ specified tags added to the existing ones.
 The `ts` argument can be a comma-separated 
 string of tags or a TagSet.
 """
-addtags(i::Index, ts) =
-  settags(i, addtags(tags(i), ts))
+addtags(i::Index, ts) = settags(i, addtags(tags(i), ts))
 
 """
     removetags(i::Index, ts)
@@ -495,7 +510,7 @@ Return the Index of the IndexVal.
 """
 NDTensors.ind(iv::IndexVal) = iv.ind
 
-NDTensors.ind(iv::Pair{<:Index,Int}) = iv.first
+NDTensors.ind(iv::Pair{<:Index}) = first(iv)
 
 """
     val(iv::IndexVal)
@@ -504,7 +519,7 @@ Return the value of the IndexVal.
 """
 val(iv::IndexVal) = iv.val
 
-val(iv::Pair{<:Index,Int}) = iv.second
+val(iv::Pair{<:Index}) = last(iv)
 
 """
     isindequal(i::Index, iv::IndexVal)
